@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "VoxRasterLAS"
+version = "0.0.1"
+authors = [
+  { name="Daniel Lamas Novoa", email="daniel.lamas.novoa@uvigo.gal" },
+  { name="GeoTech CINTEX UVigo", email="geotech@uvigo.gal" },
+]
+description = "Library for voxelising and rasterising LASPY objects"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+	"ismember==1.0.2",
+	"laspy==2.4.1",
+	"laszip==0.2.2",
+	"numpy",
+	"numba==0.56",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Repository" = "https://github.com/GeoTechUVigo/VoxRasterLAS"
