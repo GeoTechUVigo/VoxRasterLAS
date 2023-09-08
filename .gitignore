@@ -1,2 +1,5 @@
 data
 dist
+venv_create_voxraster
+.venv
+__pycache__

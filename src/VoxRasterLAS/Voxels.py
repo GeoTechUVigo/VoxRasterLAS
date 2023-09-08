@@ -28,10 +28,10 @@ from numba import cuda
 
 
 class Voxels(object):
-    def __init__(self, point_cloud: laspy.lasdata.LasData, grid: float, 
+    def __init__(self, point_cloud: laspy.lasdata.LasData=None, grid: float=None, 
                  random: str=[], mean: list=[], mode: list=[], var: list=[], centroid: str=[], 
                  random_suffix: str ='', mean_suffix: str='', mode_suffix: str='', var_suffix: str ='_var',
-                 neighbours: bool=False, calc_all: bool = False, adjust_grid: bool=False, 
+                 neighbours: bool=False, calc_all: bool = False, adjust_grid: bool=False,
                  numba=True, blocks = 128, threads_per_block = 64):
         """
         Voxels constructor.
@@ -56,13 +56,19 @@ class Voxels(object):
         :param mode_suffix: string appended to the name of the dimensions calculated by mode. [Default: '']
         :param var_suffix: string appended to the name of the dimensions calculated by variance. [Default: '_var']
         :param neighbours: if True, neighbours indexes of each voxels are calculated. [Default: False]
-        :param calc_all: if True, all the dimensions in point_cloud are computed by mean but the ones specefied in mode. The rest of the specified dimensions are calcualted with their method[Default: False]
+        :param calc_all: if True, all the dimensions in point_cloud are computed by mean but the ones specefied in mode. The rest of the specified dimensions are calcualted with their method. [Default: False]
         :param adjust_grid: if True, grid is recalcualted homogeneously spacing the whole point cloud range. [Default: False]
         :param numba: if True, the computations are perfomed using numba library. Note that the numba specifications are required to use it. [Default: True]
         :param blocks: blocks input for numba library. [Default: 128]
         :param threads_per_block: threads per block input for numba library. [Default: 64]
         """
 
+        if point_cloud is None or grid is None:
+            for p in dir(Voxels):
+                if isinstance(getattr(Voxels,p),property):
+                    setattr(self, p, None)
+            return
+        
         if grid is numbers.Number: grid = [grid, grid, grid]
         setattr(self, 'grid', grid)
 
@@ -524,16 +530,20 @@ class Voxels(object):
         if not indexes is np.ndarray: indexes = np.asarray(indexes)
         if indexes.shape == (): indexes = indexes.reshape(-1)
         # getitem in las
-        setattr(self, 'las', self.las[indexes])
+
+        # Create object
+        vx_selected = Voxels()
+        setattr(vx_selected, 'las', self.las[indexes])
+        setattr(vx_selected, 'grid', self.las[indexes])
 
         # Neighbours
         if not self.neighbours is None:
-            self.neighbours = self.neighbours[indexes]
+            vx_selected.neighbours = self.neighbours[indexes]
 
             # It is necessary to update the indexes of the neighbours
             # Reshape to use ismember
-            vx_neighbours = self.neighbours.data.reshape(-1)
-            mask = self.neighbours.mask.reshape(-1)
+            vx_neighbours = vx_selected.neighbours.data.reshape(-1)
+            mask = vx_selected.neighbours.mask.reshape(-1)
 
             # ismember works with int indexes
             if indexes.dtype == 'bool': indexes = np.where(indexes)[0]
@@ -548,16 +558,16 @@ class Voxels(object):
             vx_neighbours[mask] = 0
 
             # Reshape to the original shape and apply the mask
-            vx_neighbours = vx_neighbours.reshape(-1, self.neighbours.shape[1]).astype('uint')
-            mask = mask.reshape(-1, self.neighbours.shape[1])
+            vx_neighbours = vx_neighbours.reshape(-1, vx_selected.neighbours.shape[1]).astype('uint')
+            mask = mask.reshape(-1, vx_selected.neighbours.shape[1])
 
-            setattr(self, 'neighbours', np.ma.masked_array(vx_neighbours, mask=mask))
+            setattr(vx_selected, 'neighbours', np.ma.masked_array(vx_neighbours, mask=mask))
 
 
         # parent_idx
         if not self.parent_idx is None:
 
-            parent_idx = self.parent_idx
+            parent_idx = copy.deepcopy(self.parent_idx)
 
             # Update voxel row indexes
             if indexes.dtype == 'bool': indexes = np.where(indexes)[0]
@@ -566,9 +576,9 @@ class Voxels(object):
             parent_idx[~iloc] = -1 # -1 means this point in the original point is not in any voxel
             parent_idx[iloc] = iloc_idx
 
-            setattr(self, 'parent_idx', parent_idx)
+            setattr(vx_selected, 'parent_idx', parent_idx)
 
-        return self
+        return vx_selected
     
     
     def __len__(self):

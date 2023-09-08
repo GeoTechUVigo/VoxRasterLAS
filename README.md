@@ -22,7 +22,11 @@ You should have received a copy of the GNU General Public License along with thi
 
 
 ## Installation
-This package uses NUMBA library. Nvidia drivers and CUDA SDK must be preinstalled (check numba instructions):
+This package can also be used with and without NUMBA package version 0.57. To use with NUMBA, Nvidia drivers and CUDA SDK must be preinstalled (check numba instructions https://numba.pydata.org/numba-doc/latest/user/installing.html):
+
+LAS decompressor might be installed via pip compatible with laspy package.
+
+To install VoxRasterLAS (available in test.pypi):
 ```
-pip install VoxRasterLAS
+python3 -m pip install --extra-index-url https://test.pypi.org/simple/ VoxRasterLAS==0.0.22
 ```
