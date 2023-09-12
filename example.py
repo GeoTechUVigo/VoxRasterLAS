@@ -1,6 +1,6 @@
 import laspy
-from VoxRasterLAS.Voxels import Voxels
-from VoxRasterLAS.Raster import Raster
+from VoxRasterLAS import Voxels
+from VoxRasterLAS import Raster
 import numpy as np
 
 cloud_path = "data/BaileyTruss_000.las"
@@ -35,7 +35,7 @@ las_select = las[vx.get_parent_idx(idx)]
 vx = Voxels(las, grid=[0.02,0.2,0.2], random=['xyz'])
 
 # Method
-from VoxRasterLAS.segmentation.clouds_in_range import clouds_in_range
+from VoxRasterLAS.segmentation import clouds_in_range
 """
 Function to calculate for all clouds in cloud_path, which trajectory points are related to that cloud
 In other words, which trajectory points are inside of its limits XY, or inside in X and closer than max_distance
