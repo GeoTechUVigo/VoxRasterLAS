@@ -8,7 +8,7 @@ Library to voxelise point clouds according to the LAS format, and rasterise them
 
 
 ## Licence
-Automated instance and semantic segmentation of point clouds of large metallic truss bridges with modelling purposes.
+VoxRasterLAS
 
 Copyright (C) 2023 GeoTECH Group <geotech@uvigo.gal>
 
