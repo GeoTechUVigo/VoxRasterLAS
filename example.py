@@ -15,6 +15,7 @@ with the program in COPYING. If not, see <https://www.gnu.org/licenses/>.
 
 
 import laspy
+from src.VoxRasterLAS.Voxels import Voxels
 from VoxRasterLAS import Voxels
 from VoxRasterLAS import Raster
 import numpy as np
@@ -28,7 +29,7 @@ las = laspy.read(cloud_path)
 rt = Raster(las, grid=0.01, min_dimensions=['z'], max_dimensions=['z'], numba=True)
 
 # Voxels
-vx = Voxels(las, grid=[0.02,0.2,0.2], mean=['xyz'], centroid=['a', 'b', 'c'], var=['z'], random=['x','y', 'z'], random_suffix='_random', var_suffix='_var', neighbours=True, numba=True)
+vx = Voxels(las, grid=0.2, mean=['xyz'], centroid=['a', 'b', 'c'], var=['z'], random=['x','y', 'z'], random_suffix='_random', var_suffix='_var', neighbours=True, numba=True)
 
 # Neighbours
 nb = vx.neighbours

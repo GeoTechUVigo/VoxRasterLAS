@@ -67,7 +67,7 @@ class Voxels(object):
                     setattr(self, p, None)
             return
         
-        if grid is numbers.Number: grid = [grid, grid, grid]
+        if  isinstance(grid,numbers.Number): grid = [grid, grid, grid]
         setattr(self, 'grid', grid)
 
         las_dimension_names = list(point_cloud.point_format.dimension_names)
