@@ -61,6 +61,7 @@ def min(input, index, output):
         for i in range(x, input.shape[0],stride_x):
             cuda.atomic.min(output, (index[i], j), input[i, j])
 
+
 @cuda.jit
 def squared_dist_sum(input, index, mean, output):
     idx = cuda.grid(1)
@@ -68,6 +69,15 @@ def squared_dist_sum(input, index, mean, output):
     
     for i in range(idx, input.shape[0], stride):
         cuda.atomic.add(output, (index[i], 0), (input[i, 0] - mean[index[i], 0])**2)
+
+
+@cuda.jit
+def covar_dist_sum(input_1, input_2, index, mean_1, mean_2, output):
+    idx = cuda.grid(1)
+    stride = cuda.gridsize(1)
+    
+    for i in range(idx, input_1.shape[0], stride):
+        cuda.atomic.add(output, (index[i], 0), (input_1[i, 0] - mean_1[index[i], 0]) * (input_2[i, 0] - mean_2[index[i], 1]))
 
 
 @cuda.jit
