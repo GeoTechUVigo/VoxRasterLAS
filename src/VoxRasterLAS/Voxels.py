@@ -26,24 +26,23 @@ from numba import cuda
 
 
 class Voxels(object):
-    def __init__(self, point_cloud: laspy.lasdata.LasData=None, grid: float=None, 
+    def __init__(self, point_cloud: laspy.lasdata.LasData=None, voxel_size: float=None, 
                  random: str=[], mean: list=[], mode: list=[], var: list=[], cov: list=[], centroid: str=[], 
                  random_suffix: str ='', mean_suffix: str='', mode_suffix: str='', var_suffix: str ='_var', cov_suffix: str ='_cov',
-                 neighbours: bool=False, pca_local: bool=False, scale_eigenvalues: bool=False, calc_all: bool = False, adjust_grid: bool=False,
+                 neighbours: bool=False, grid: bool=False, pca_local: bool=False, scale_eigenvalues: bool=False, calc_all: bool = False, adjust_voxel_size: bool=False,
                  numba=True, blocks = 128, threads_per_block = 64):
         """
         Voxels constructor.
-        A Voxel object is generated from the laspy.lasdata.LasData object, specifying a grid (voxel size) and which las dimensions you need to calculate and how.
+        A Voxel object is generated from the laspy.lasdata.LasData object, specifying a voxel_size (voxel size) and which las dimensions you need to calculate and how.
         The voxelised point_cloud is return as laspy.lasdata.LasData in the property las. 
         The dimensions to be computed must be specified in the lists which indicate by which method they are calculated. for each of these lists, 
         the suffix to store the calcualted dimension must be specified. For instance, if var =['z'] and var_suffic='_var', the variance of z is saved as 'z_var'.
         If mean = ['xyz'] and mean_suffix = '', the average of xyz is saved as 'xyz'.
         It is also possible to computed the centroid of the voxels using the argument centroid.
         Note that all dimensions must be 1D array. The only dimension name allowed to call and write several dimensions in a LasData is 'xyz'.
-        The porperties that are not in las are neighbours, parent_idx and grid.
 
         :param point_cloud: point cloud to be vonxelised.
-        :param grid: size of voxel.
+        :param voxel_size: size of voxel.
         :param random: list of dimensions in point_cloud to be calcualted by randomly picking 1 point per voxel. [Defaul: []]
         :param mean: list of dimensions in point_cloud to be calcualted by averaging. [Defaul: []]
         :param mode: list of dimensions in point_cloud to be calcualted by mode. [Defaul: []]
@@ -54,24 +53,25 @@ class Voxels(object):
         :param mean_suffix: string appended to the name of the dimensions calculated by averaging. [Default: '']
         :param mode_suffix: string appended to the name of the dimensions calculated by mode. [Default: '']
         :param var_suffix: string appended to the name of the dimensions calculated by variance. [Default: '_var']
-        :param neighbours: if True, neighbours indexes of each voxels are calculated. [Default: False]
+        :param neighbours: if True, neighbours indexes are calcualted referenced to the array las.xyz. [Default: False]
+        :param grid: if True, 3D boolean occupation grid and indexes_grid are computed. [Default: False]
         :param pca_local: if True, pca at voxel level is calculated. [Default: False]
         :param scale_eigenvalues: if True, eigenvalues of pca_local are normalised. [Default: False]
         :param calc_all: if True, all the dimensions in point_cloud are computed by mean but the ones specefied in mode. The rest of the specified dimensions are calcualted with their method. [Default: False]
-        :param adjust_grid: if True, grid is recalcualted homogeneously spacing the whole point cloud range. [Default: False]
+        :param adjust_voxel_size: if True, voxel_size is recalcualted homogeneously spacing the whole point cloud range. [Default: False]
         :param numba: if True, the computations are perfomed using numba library. Note that the numba specifications are required to use it. [Default: True]
         :param blocks: blocks input for numba library. [Default: 128]
         :param threads_per_block: threads per block input for numba library. [Default: 64]
         """
 
-        if point_cloud is None or grid is None:
-            for p in dir(Voxels):
-                if isinstance(getattr(Voxels,p),property):
-                    setattr(self, p, None)
+        # Set all properties as None
+        for p in dir(Voxels):
+            if isinstance(getattr(Voxels,p),property):
+                setattr(self, p, None)
+        if point_cloud is None or voxel_size is None:
             return
         
-        if  isinstance(grid,numbers.Number): grid = [grid, grid, grid]
-        setattr(self, 'grid', grid)
+        if  isinstance(voxel_size,numbers.Number): voxel_size = [voxel_size, voxel_size, voxel_size]
 
         las_dimension_names = list(point_cloud.point_format.dimension_names)
         las_dimension_names.remove('X'), las_dimension_names.remove('Y'), las_dimension_names.remove('Z')
@@ -109,14 +109,14 @@ class Voxels(object):
         max_z = np.amax(point_cloud.xyz[:, 2])
 
         # Calculate number of voxels. It cannot be 0.
-        n_x = np.ceil((max_x - min_x) / grid[0]).astype('int') if np.ceil((max_x - min_x) / grid[0]) != 0 else 1
-        n_y = np.ceil((max_y - min_y) / grid[1]).astype('int') if np.ceil((max_y - min_y) / grid[1]) != 0 else 1
-        n_z = np.ceil((max_z - min_z) / grid[2]).astype('int') if np.ceil((max_z - min_z) / grid[2]) != 0 else 1
+        n_x = np.ceil((max_x - min_x) / voxel_size[0]).astype('int') if np.ceil((max_x - min_x) / voxel_size[0]) != 0 else 1
+        n_y = np.ceil((max_y - min_y) / voxel_size[1]).astype('int') if np.ceil((max_y - min_y) / voxel_size[1]) != 0 else 1
+        n_z = np.ceil((max_z - min_z) / voxel_size[2]).astype('int') if np.ceil((max_z - min_z) / voxel_size[2]) != 0 else 1
 
         # New size of voxel. It cannot be 0.
-        step_x = (max_x - min_x) / n_x if max_x - min_x != 0 and adjust_grid else grid[0]
-        step_y = (max_y - min_y) / n_y if max_y - min_y != 0 and adjust_grid else grid[1]
-        step_z = (max_z - min_z) / n_z if max_z - min_z != 0 and adjust_grid else grid[2]
+        step_x = (max_x - min_x) / n_x if max_x - min_x != 0 and adjust_voxel_size else voxel_size[0]
+        step_y = (max_y - min_y) / n_y if max_y - min_y != 0 and adjust_voxel_size else voxel_size[1]
+        step_z = (max_z - min_z) / n_z if max_z - min_z != 0 and adjust_voxel_size else voxel_size[2]
 
         # Calculate coordinates of each point
         dim_x = np.trunc((point_cloud.xyz[:, 0] - min_x) / step_x).astype('uint')
@@ -149,6 +149,19 @@ class Voxels(object):
             # Count number of occupied voxels
             n_voxels = occ_voxels.shape[0]
 
+        # ==============================================================================================================
+        # Initialise voxel voxel_size variables
+        setattr(self, 'voxel_size', np.array((step_x, step_y, step_z)))
+        setattr(self, 'grid_size', np.array((n_x, n_y, n_z)))
+        setattr(self, 'min_coords', np.array((min_x, min_y, min_z)))
+
+        if grid:
+            setattr(self, 'indexes_grid', self.compute_indexes_xyz(idx))
+
+            grid = np.zeros((self.grid_size[0],self.grid_size[1],self.grid_size[2]), dtype=np.bool_)
+            grid[self.indexes_grid[:,0], self.indexes_grid[:,1], self.indexes_grid[:,2]] = True
+            setattr(self, 'grid', grid)
+            
         # ==============================================================================================================
         # Initialise las object
         header = copy.deepcopy(point_cloud.header)
@@ -214,22 +227,10 @@ class Voxels(object):
 
             # Set property
             setattr(self, 'neighbours', vx_neighbours)
-        else:
-            setattr(self, 'neighbours', None)
         
         # ==============================================================================================================
         if centroid!=[]:
-            dim_total = np.concatenate((dim_x.reshape(-1,1),dim_y.reshape(-1,1), dim_z.reshape(-1,1)), axis=1)
-            if numba:
-                dim_total = dim_total[row_idx]
-            else:
-                dim_total = dim_total[shift_index][row_idx]
-
-            centroids = np.zeros(dim_total.shape)
-            centroids[:, 0] = np.round(dim_total[:, 0] * step_x + min_x + 0.5*step_x, len(str(point_cloud.header.scale[0])) - 2)
-            centroids[:, 1] = np.round(dim_total[:, 1] * step_y + min_y + 0.5*step_y, len(str(point_cloud.header.scale[1])) - 2)
-            centroids[:, 2] = np.round(dim_total[:, 2] * step_z + min_z + 0.5*step_z, len(str(point_cloud.header.scale[2])) - 2)
-            
+            centroids = self.compute_centroids(indexes_global=idx)            
             dtype = str(point_cloud.xyz.dtype)
             if centroid == ['xyz']:
                 setattr(self.las, 'xyz', centroids)
@@ -422,10 +423,7 @@ class Voxels(object):
                 eigenvectors[:, :, 2] = np.cross(eigenvectors[:, :, 0], eigenvectors[:, :, 1])
 
                 setattr(self,'eiv',eigenvalues)
-                setattr(self,'eig',eigenvectors)
-            else:
-                setattr(self,'eiv',None)
-                setattr(self,'eig',None)               
+                setattr(self,'eig',eigenvectors)          
 
         # ==================================================================================================================
         # If not using numba
@@ -463,7 +461,7 @@ class Voxels(object):
             # Calculating the parameters of each voxel
             if mean_properties or mode_properties or var_properties:
                 for i in range(n_voxels):
-
+                    
                     # Select points in this voxel
                     if i != 0:
                         points = slice(occ_voxels[i-1, 1],occ_voxels[i, 1], 1)
@@ -482,6 +480,7 @@ class Voxels(object):
                     if var_properties:
                         for j in range(data_var.shape[1]):
                             vx_data_var[i, j] = utils.var(data_var[points, j])
+
             # ==============================================================================================================
             # Set mean properties
             if mean_properties:
@@ -502,24 +501,24 @@ class Voxels(object):
     # Properties
 
     @property
-    def grid(self):
+    def voxel_size(self):
         """
-        Getter of grid.
+        Getter of voxel_size.
 
         :return: size of voxel as float.
         """
-        return self.__grid
+        return self.__voxel_size
 
-    @grid.setter
-    def grid(self, grid):
+    @voxel_size.setter
+    def voxel_size(self, voxel_size):
         """
-        Setter of grid.
+        Setter of voxel_size.
 
-        :param grid: size of voxel as float.
+        :param voxel_size: size of voxel as float.
         :return: None.
         """
 
-        self.__grid = grid
+        self.__voxel_size = voxel_size
 
     @property
     def las(self):
@@ -628,6 +627,88 @@ class Voxels(object):
 
         self.__eig = eig
 
+
+    @property
+    def grid_size(self):
+        """
+        Getter of grid_size.
+
+        :return: size of grid in number of voxels.
+        """
+        return self.__grid_size
+
+    @grid_size.setter
+    def grid_size(self, grid_size):
+        """
+        Setter of grid_size.
+
+        :param grid_size: size of grid in number of voxels.
+        :return: None.
+        """
+
+        self.__grid_size = grid_size
+
+
+    @property
+    def min_coords(self):
+        """
+        Getter of min_coords.
+
+        :return: minimun coordinates of the point cloud.
+        """
+        return self.__min_coords
+
+    @min_coords.setter
+    def min_coords(self, min_coords):
+        """
+        Setter of min_coords.
+
+        :param min_coords: size of grid in number of voxels.
+        :return: None.
+        """
+
+        self.__min_coords = min_coords
+
+
+    @property
+    def indexes_grid(self):
+        """
+        Getter of indexes_grid.
+
+        :return: Nx3 grid indexes_grid of self.las points.
+        """
+        return self.__indexes_grid
+
+    @indexes_grid.setter
+    def indexes_grid(self, indexes_grid):
+        """
+        Setter of indexes_grid.
+
+        :param indexes_grid: Nx3 grid indexes_grid of self.las points.
+        :return: None.
+        """
+
+        self.__indexes_grid = indexes_grid
+
+    @property
+    def grid(self):
+        """
+        Getter of grid.
+
+        :return: NxMxW occupation grid.
+        """
+        return self.__grid
+
+    @grid.setter
+    def grid(self, grid):
+        """
+        Setter of grid.
+
+        :param indexes_grid: NxMxW occupation grid.
+        :return: None.
+        """
+
+        self.__grid = grid
     # ==================================================================================================================
     # Methods
 
@@ -666,7 +747,15 @@ class Voxels(object):
         # Create object
         vx_selected = Voxels()
         setattr(vx_selected, 'las', self.las[indexes])
-        setattr(vx_selected, 'grid', self.grid)
+        setattr(vx_selected, 'voxel_size', self.voxel_size)
+        setattr(vx_selected, 'grid_size', self.grid_size)
+        setattr(vx_selected, 'min_coords', self.min_coords)
+
+        if self.indexes_grid is not None:
+            setattr(vx_selected, 'indexes_grid', self.indexes_grid[indexes])
+            grid = np.zeros((vx_selected.grid_size[0],vx_selected.grid_size[1],vx_selected.grid_size[2]), dtype=np.bool_)
+            grid[vx_selected.indexes_grid[:,0], vx_selected.indexes_grid[:,1], vx_selected.indexes_grid[:,2]] = True
+            setattr(vx_selected, 'grid', grid)
 
         if not self.eiv is None:
             setattr(vx_selected, 'eiv', self.eiv[indexes])
@@ -726,6 +815,54 @@ class Voxels(object):
         '''
         return len(self.las)
     
+
+    def compute_indexes_global(self, indexes:np.array) -> np.array:
+        '''
+        Compute the global index using the indexes x,y,z
+
+        :param indexes: Nx3 numpy.array() with indexes x, y and z of voxels.
+        :return global_indexes Nx1 numpy.array()
+        '''
+        global_indexes = indexes[:,0] + (indexes[:,1] * self.grid_size[0]) + (indexes[:,2] * self.grid_size[0] * self.grid_size[1])
+        return global_indexes
+
+    def compute_indexes_xyz(self, global_indexes: np.array) -> np.array:
+        '''
+        Compute indexes x, y and z.
+
+        :param global indexes Nx1 numpy.array()
+        :return indexes_xyz Nx3 numpy.array()
+        '''
+        indexes_xyz = np.zeros((len(global_indexes),3), dtype='uint')
+
+        indexes_xyz[:,2] = np.floor_divide(global_indexes, (self.grid_size[0]*self.grid_size[1]))
+        remaninder = np.remainder(global_indexes, (self.grid_size[0]*self.grid_size[1]))
+        indexes_xyz[:,1] = np.floor_divide(remaninder, self.grid_size[0])
+        indexes_xyz[:,0] = np.remainder(remaninder, self.grid_size[0])
+
+        return indexes_xyz
+
+
+    def compute_centroids(self, indexes_xyz=None, indexes_global=None) -> np.array:
+        '''
+        Compute the centroids (x,y,z) of the voxels using their indexes.
+        Use indexe_xyz or indexes_global.
+
+        :param indexes_xyz: global indexes Nx3 numpy.array(). [Default:None]
+        :param indexes_global: global indexes Nx1 numpy.array(). [Default:None]
+        :return centroids: Nx3 centroids x,y,z.
+        '''
+
+        if indexes_global is not None:
+            indexes_xyz = self.compute_indexes_xyz(indexes_global)
+
+        centroids = np.zeros(indexes_xyz.shape)
+        centroids[:, 0] = np.round(indexes_xyz[:, 0] * self.voxel_size[0] + self.min_coords[0] + 0.5*self.voxel_size[0], len(str(self.las.header.scale[0])) - 2)
+        centroids[:, 1] = np.round(indexes_xyz[:, 1] * self.voxel_size[1] + self.min_coords[1] + 0.5*self.voxel_size[1], len(str(self.las.header.scale[1])) - 2)
+        centroids[:, 2] = np.round(indexes_xyz[:, 2] * self.voxel_size[2] + self.min_coords[2] + 0.5*self.voxel_size[2], len(str(self.las.header.scale[2])) - 2)
+
+        return centroids
+
 
     def __set_property(self, property_name, property_shape, d_out, dtype, suffix):
 

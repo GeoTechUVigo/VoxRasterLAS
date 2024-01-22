@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "VoxRasterLAS"
-version = "0.0.25"
+version = "0.0.27"
 authors = [
   { name="Daniel Lamas Novoa", email="daniel.lamas.novoa@uvigo.gal" },
   { name="GeoTech CINTEX UVigo", email="geotech@uvigo.gal" },

@@ -1,6 +1,6 @@
 """
-Copyright (C) 2023 GeoTECH Group <geotech@uvigo.gal>
-Copyright (C) 2023 Daniel Lamas Novoa <daniel.lamas.novoa@uvigo.gal>
+Copyright (C) 2024 GeoTECH Group <geotech@uvigo.gal>
+Copyright (C) 2024 Daniel Lamas Novoa <daniel.lamas.novoa@uvigo.gal>
 This file is part of VoxRasterLAS.
 The program is free software: you can redistribute it and/or modify it 
 under the terms of the GNU General Public License as published by the Free
@@ -16,26 +16,32 @@ with the program in COPYING. If not, see <https://www.gnu.org/licenses/>.
 
 import laspy
 from src.VoxRasterLAS.Voxels import Voxels
-from VoxRasterLAS import Voxels as Voxels_2
-from VoxRasterLAS import Raster
+from src.VoxRasterLAS.Raster import Raster
+#from VoxRasterLAS import Raster
+#from VoxRasterLAS import Voxels
 import numpy as np
+import time
 
 cloud_path = "data/BaileyTruss_000.las"
+#cloud_path = "/home/lamas/Descargas/aloia_20230125_071206_AUTO_0.las"
 
 # Read point cloud
 las = laspy.read(cloud_path)
 
 # Raster
-rt = Raster(las, grid=0.01, min_dimensions=['z'], max_dimensions=['z'], numba=True)
+#rt = Raster(las, grid=0.01, min_dimensions=['z'], max_dimensions=['z'], numba=True)
 
 # Voxels
-vx = Voxels(las, grid=0.2, mean=['xyz'], pca_local=True, scale_eigenvalues=True, numba=True)
+vx = Voxels(las, voxel_size=0.2, mean=['xyz'], centroid=['a', 'b', 'c'], var=['z'], mode=['classification'], var_suffix='_var', grid=True, neighbours=False, pca_local=False, numba=True)
 
-vx_2 = Voxels_2(las, grid=0.2, mean=['xyz'], var=['y'], var_suffix='_var', neighbours=True, numba=True)
+# voxelised las
+vx.las
 
+# eigenvectors and eigenvalues
+eig, eiv = vx.eig, vx.eiv
 
-# Neighbours
-nb = vx.neighbours
+# occupation grid
+grid = vx.grid
 
 # parent idx
 parent_idx = vx.get_parent_idx([4,5,6,7,3,100])

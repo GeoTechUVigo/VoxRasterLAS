@@ -10,9 +10,9 @@ Library to voxelise point clouds according to the LAS format, and rasterise them
 ## Licence
 VoxRasterLAS
 
-Copyright (C) 2023 GeoTECH Group <geotech@uvigo.gal>
+Copyright (C) 2024 GeoTECH Group <geotech@uvigo.gal>
 
-Copyright (C) 2023 Daniel Lamas Novoa <daniel.lamas.novoa@uvigo.gal>
+Copyright (C) 2024 Daniel Lamas Novoa <daniel.lamas.novoa@uvigo.gal>
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
 
