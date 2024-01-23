@@ -21,30 +21,37 @@ from .utils import utils_cuda
 from ismember import ismember
 import laspy
 from .utils import utils
+import numbers
 
 
 class Raster(object):
-    def __init__(self, point_cloud: laspy.lasdata.LasData, grid: float, mean_dimensions: list=[], mode_dimensions: list=[], var_dimensions: list=[], 
-                 max_dimensions: list=[], min_dimensions: list=[], occupation: bool=False, adjust_grid: bool=False, raster_size: np.array = None, centre: np.array = None, down_mode: bool=False,
+    def __init__(self, point_cloud: laspy.lasdata.LasData, pixel_size: float, occupation: bool=False, mean_dimensions: list=[], mode_dimensions: list=[], var_dimensions: list=[], 
+                 max_dimensions: list=[], min_dimensions: list=[], mean_suffix: str='', mode_suffix: str='', var_suffix: str='_var', max_suffix: str='_max', min_suffix: str='_min',
+                 adjust_pixel_size: bool=False, raster_size: np.array = None, centre: np.array = None, down_mode: bool=False,
                  numba=True, blocks = 128, threads_per_block = 64):
         """
         Raster constructor. This is a class to work with rasterised 2D point clouds in XY plane.
 
-        A Raster object is generated from the laspy.lasdata.LasData object, specifying a grid and which las dimensions you need to calculate and how.
+        A Raster object is generated from the laspy.lasdata.LasData object, specifying a pixel_size and which las dimensions you need to calculate and how.
         The dimension computed with variance and max are set with the name $DIMENSION_var and $DIMENSION_max.
 
         :param point_cloud: point cloud to be vonxelised.
-        :param grid: size of voxel.
-        :param mean_dimensions: list of dimensions in point_cloud to be calcualted by averaging. [Defaul: []]
-        :param mode_dimensions: list of dimensions in point_cloud to be calcualted by mode. [Defaul: []]
-        :param var_dimensions: list of dimensions in point_cloud to be calcualted by variance. [Defaul: []]
-        :param max_dimensions: list of dimensions in point_cloud to be calcualted by max(). [Defaul: []]
-        :param min_dimensions: list of dimensions in point_cloud to be calcualted by min(). [Defaul: []]
-        :param occupation: if True, it returns a boolean raster with True in the occupated pixels. [Default: False]
-        :param adjust_grid: if True, grid is recalcualted homogeneously spacing the whole raster range. [Default: False]
-        :param raster_size: dimensions in pixels of the output image
+        :param pixel_size: size of pixel. It can numeric or 3x1 array.
+        :param occupation: if True, it returns a boolean raster with True in the occupated pixels. Saved in property occupation. [Default: False]
+        :param mean_dimensions: list of dimensions in point_cloud to be calcualted by averaging. Saved in property dimension_name+mean_suffix.[Defaul: []]
+        :param mode_dimensions: list of dimensions in point_cloud to be calcualted by mode. Saved in property dimension_name+mode_suffix. [Defaul: []]
+        :param var_dimensions: list of dimensions in point_cloud to be calcualted by variance. Saved in property dimension_name+var_suffix. [Defaul: []]
+        :param max_dimensions: list of dimensions in point_cloud to be calcualted by max(). Saved in property dimension_name+max_suffix. [Defaul: []]
+        :param min_dimensions: list of dimensions in point_cloud to be calcualted by min(). Saved in property dimension_name+min_suffix. [Defaul: []]
+        :param mean_suffix: string appended to the name of the dimensions calculated by averaging. [Default: '']
+        :param mode_suffix: string appended to the name of the dimensions calculated by mode. [Default: '']
+        :param var_suffix: string appended to the name of the dimensions calculated by variance. [Default: '_var']
+        :param max_suffix: string appended to the name of the dimensions calculated by maximum. [Default: '_max']
+        :param min_suffix: string appended to the name of the dimensions calculated by minimum. [Default: '_min']
+        :param adjust_pixel_size: if True, pixel_size is recalcualted homogeneously spacing the whole raster range. [Default: False]
+        :param raster_size: dimensions in pixels of the output image.
         :param centre: centre of point_cloud used to determine which points are inside the raster_size. If it is not specified the centre of point_cloud is used.
-        :param down_mode: If True, the dimensions specifid in mean_dimensions are obtained by choosen the lower point in Z in each pixel. The other dimensions are not computed. It does not use numba. [Default: False]
+        :param down_mode: If True, the dimensions specifid in mean_dimensions are obtained by choosen the lower point in Z in each pixel. The other dimensions are not computed. Not available with numba. [Default: False]
         :param numba: if True, the computations are perfomed using numba library. Note that the numba specifications are required to use it. [Default: True]
         :param blocks: blocks input for numba library. [Default: 128]
         :param threads_per_block: threads per block input for numba library. [Default: 64]
@@ -52,7 +59,7 @@ class Raster(object):
 
         if down_mode: numba=False
 
-        setattr(self, 'grid', grid)
+        if  isinstance(pixel_size,numbers.Number): pixel_size = [pixel_size, pixel_size]
 
         # Limits of the raster
         if raster_size is None:
@@ -62,12 +69,12 @@ class Raster(object):
             max_y = point_cloud.xyz[:, 1].max()
 
             # Calculate number of pixels
-            n_x = np.ceil((max_x - min_x) / grid).astype('uint')
-            n_y = np.ceil((max_y - min_y) / grid).astype('uint')
+            n_x = np.ceil((max_x - min_x) / pixel_size[0]).astype('uint')
+            n_y = np.ceil((max_y - min_y) / pixel_size[1]).astype('uint')
 
             # New size of voxel
-            step_x = (max_x - min_x) / n_x if adjust_grid else grid
-            step_y = (max_y - min_y) / n_y if adjust_grid else grid
+            step_x = (max_x - min_x) / n_x if adjust_pixel_size else pixel_size[0]
+            step_y = (max_y - min_y) / n_y if adjust_pixel_size else pixel_size[1]
 
         else:
             # Dimensions given
@@ -75,8 +82,8 @@ class Raster(object):
             n_y = raster_size[1].astype('uint')
 
             # New size of voxel
-            step_x = grid if adjust_grid else grid
-            step_y = grid if adjust_grid else grid
+            step_x = pixel_size[0]
+            step_y = pixel_size[1]
 
             # Limits of the raster in coords
             centre = np.mean(point_cloud.xyz, axis=0) if centre is None else centre
@@ -89,6 +96,8 @@ class Raster(object):
             # Select points inside the limits
             in_size = np.all((point_cloud.xyz[:, 0] > min_x, point_cloud.xyz[:, 0] < max_x, point_cloud.xyz[:, 1] > min_y, point_cloud.xyz[:, 1] < max_y), axis=0)
             point_cloud = point_cloud[in_size]
+
+        setattr(self, 'pixel_size', np.array((step_x, step_y)))
 
         # Calculate coordinates of each point
         dim_x = np.trunc((point_cloud.xyz[:, 0] - min_x) / step_x).astype('uint')
@@ -135,7 +144,7 @@ class Raster(object):
                 out = np.transpose(out, axes=[1,0,2])
 
                 # Set
-                setattr(self, property_name, out)
+                setattr(self, property_name + mean_suffix, out)
 
             for property_name in mode_dimensions:
                 # Load property in device
@@ -163,7 +172,7 @@ class Raster(object):
                 out = np.transpose(out, axes=[1,0,2])
 
                 # Set property
-                setattr(self, property_name, out)
+                setattr(self, property_name + mode_suffix, out)
 
 
             for property_name in max_dimensions:
@@ -186,7 +195,7 @@ class Raster(object):
                 out = np.transpose(out, axes=[1,0,2])
 
                 # Set
-                setattr(self, property_name + '_max', out)
+                setattr(self, property_name + max_suffix, out)
 
             for property_name in min_dimensions:
                 # Load property in device
@@ -208,7 +217,7 @@ class Raster(object):
                 out = np.transpose(out, axes=[1,0,2])
 
                 # Set
-                setattr(self, property_name + '_min', out)
+                setattr(self, property_name + min_suffix, out)
 
             for property_name in var_dimensions:
                 # Load property in device
@@ -241,7 +250,7 @@ class Raster(object):
                 out = np.transpose(out, axes=[1,0,2])
 
                 # Set
-                setattr(self, property_name + '_var', out)
+                setattr(self, property_name + var_suffix, out)
 
             if occupation:
                 out = np.zeros((n_y*n_x, 1), dtype='bool')
@@ -356,38 +365,81 @@ class Raster(object):
             # Set properties
             for i in range(len(mean_dimensions)):
                 if i != 0:
-                    setattr(self, mean_dimensions[i], rt_mean[..., data_size_mean[i-1]:data_size_mean[i]].astype(dtype_mean[i]))
+                    setattr(self, mean_dimensions[i] + mean_suffix, rt_mean[..., data_size_mean[i-1]:data_size_mean[i]].astype(dtype_mean[i]))
                 else:
-                    setattr(self, mean_dimensions[i], rt_mean[..., 0:data_size_mean[i]].astype(dtype_mean[i]))
+                    setattr(self, mean_dimensions[i] + mean_suffix, rt_mean[..., 0:data_size_mean[i]].astype(dtype_mean[i]))
 
             for i in range(len(mode_dimensions)):
                 if i != 0:
-                    setattr(self, mode_dimensions[i], rt_mode[..., data_size_mode[i-1]:data_size_mode[i]].astype(dtype_mode[i]))
+                    setattr(self, mode_dimensions[i] + mode_suffix, rt_mode[..., data_size_mode[i-1]:data_size_mode[i]].astype(dtype_mode[i]))
                 else:
-                    setattr(self, mode_dimensions[i], rt_mode[..., 0:data_size_mode[i]].astype(dtype_mode[i]))
+                    setattr(self, mode_dimensions[i] + mode_suffix, rt_mode[..., 0:data_size_mode[i]].astype(dtype_mode[i]))
 
             for i in range(len(var_dimensions)):
                 if i != 0:
-                    setattr(self, var_dimensions[i] + '_var', rt_var[..., data_size_var[i-1]:data_size_var[i]].astype(dtype_var[i]))
+                    setattr(self, var_dimensions[i] + var_suffix, rt_var[..., data_size_var[i-1]:data_size_var[i]].astype(dtype_var[i]))
                 else:
-                    setattr(self, var_dimensions[i]+ '_var', rt_var[..., 0:data_size_var[i]].astype(dtype_var[i]))
+                    setattr(self, var_dimensions[i] + var_suffix, rt_var[..., 0:data_size_var[i]].astype(dtype_var[i]))
 
             for i in range(len(max_dimensions)):
                 if i != 0:
-                    setattr(self, max_dimensions[i] + '_max', rt_max[..., data_size_max[i-1]:data_size_max[i]].astype(dtype_max[i]))
+                    setattr(self, max_dimensions[i] + max_suffix, rt_max[..., data_size_max[i-1]:data_size_max[i]].astype(dtype_max[i]))
                 else:
-                    setattr(self, max_dimensions[i] + '_max', rt_max[..., 0:data_size_max[i]].astype(dtype_max[i]))
+                    setattr(self, max_dimensions[i] + max_suffix, rt_max[..., 0:data_size_max[i]].astype(dtype_max[i]))
 
             for i in range(len(min_dimensions)):
                 if i != 0:
-                    setattr(self, min_dimensions[i] + '_min', rt_min[..., data_size_min[i-1]:data_size_min[i]].astype(dtype_min[i]))
+                    setattr(self, min_dimensions[i] + min_suffix, rt_min[..., data_size_min[i-1]:data_size_min[i]].astype(dtype_min[i]))
                 else:
-                    setattr(self, min_dimensions[i] + '_min', rt_min[..., 0:data_size_min[i]].astype(dtype_min[i]))
+                    setattr(self, min_dimensions[i] + min_suffix, rt_min[..., 0:data_size_min[i]].astype(dtype_min[i]))
 
             setattr(self, 'parent_idx', idx_orig)
 
             if occupation:
                 setattr(self, 'occupation', rt_occupation)
+    # ==================================================================================================================
+    # Properties
+
+    @property
+    def pixel_size(self):
+        """
+        Getter of pixel_size.
+
+        :return: size of pixel as float.
+        """
+        return self.__pixel_size
+
+    @pixel_size.setter
+    def pixel_size(self, pixel_size):
+        """
+        Setter of pixel_size.
+
+        :param pixel_size: size of pixel as float.
+        :return: None.
+        """
+
+        self.__pixel_size = pixel_size
+
+    @property
+    def parent_idx(self):
+        """
+        Getter of parent_idx.
+
+        :return: Mx1 numpy.array. M is the number of points in the original point cloud. The value of each point is the index of the pixelised image point cloud to which it belongs.
+        """
+        return self.__parent_idx
+
+    @parent_idx.setter
+    def parent_idx(self, parent_idx):
+        """
+        Setter of parent_idx.
+
+        :param parent_idx: Mx1 numpy.array. M is the number of points in the original point cloud. The value of each point is the index of the pixelised image point cloud to which it belongs.
+        :return: None.
+        """
+
+        self.__parent_idx = parent_idx
+
     # ==================================================================================================================
     # Methods
 

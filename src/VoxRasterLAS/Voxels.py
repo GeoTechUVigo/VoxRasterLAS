@@ -42,19 +42,20 @@ class Voxels(object):
         Note that all dimensions must be 1D array. The only dimension name allowed to call and write several dimensions in a LasData is 'xyz'.
 
         :param point_cloud: point cloud to be vonxelised.
-        :param voxel_size: size of voxel.
+        :param voxel_size: size of voxel. It can numeric or 3x1 array.
         :param random: list of dimensions in point_cloud to be calcualted by randomly picking 1 point per voxel. [Defaul: []]
         :param mean: list of dimensions in point_cloud to be calcualted by averaging. [Defaul: []]
         :param mode: list of dimensions in point_cloud to be calcualted by mode. [Defaul: []]
         :param var: list of dimensions in point_cloud to be calcualted by variance. [Defaul: []]
-        :param cov: list of dimensions in point_cloud to be calcualted by covariance. For insntace: [['x','y'], ['x','intensity']]. [Defaul: []]
+        :param cov: list of dimensions in point_cloud to be calcualted by covariance. For insntace: [['x','y'], ['x','intensity']]. Only with numba. [Defaul: []]
         :param centroid: if different of [], it calcualtes the centroid of each voxel and save it with the name specified in this str. Note it must be ['xyz'] or a list with 3 str. [Default: []]
         :param random_suffix: string appended to the name of the dimensions calculated by randomly picking 1 point per voxel. [Default: '']
         :param mean_suffix: string appended to the name of the dimensions calculated by averaging. [Default: '']
         :param mode_suffix: string appended to the name of the dimensions calculated by mode. [Default: '']
         :param var_suffix: string appended to the name of the dimensions calculated by variance. [Default: '_var']
+        :param cov_suffix: string appended to the name of the dimensions calculated by covariance. [Default: '_cov']
         :param neighbours: if True, neighbours indexes are calcualted referenced to the array las.xyz. [Default: False]
-        :param grid: if True, 3D boolean occupation grid and indexes_grid are computed. [Default: False]
+        :param grid: if True, 3D boolean occupation grid and indexes_grid are computed. Only with numba. [Default: False]
         :param pca_local: if True, pca at voxel level is calculated. [Default: False]
         :param scale_eigenvalues: if True, eigenvalues of pca_local are normalised. [Default: False]
         :param calc_all: if True, all the dimensions in point_cloud are computed by mean but the ones specefied in mode. The rest of the specified dimensions are calcualted with their method. [Default: False]
