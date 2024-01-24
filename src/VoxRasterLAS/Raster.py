@@ -153,7 +153,7 @@ class Raster(object):
                 dmax = d_property.max()
                 if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
 
-                d_property = cuda.to_device(np.ascontiguousarray(d_property.astpye(np.int32)))
+                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.int32)))
 
                 d_aux =cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, dmax+1), dtype=np.int32)))
                 d_aux_2 = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels), dtype=np.int32)))
