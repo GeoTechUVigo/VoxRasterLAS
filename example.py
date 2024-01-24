@@ -23,13 +23,13 @@ import numpy as np
 import time
 
 cloud_path = "data/BaileyTruss_000.las"
-#cloud_path = "/home/lamas/Descargas/aloia_20230125_071206_AUTO_0.las"
+cloud_path = "/home/lamas/Documentos/github/voxraster_prueba/data/SUD/MLS Point Clouds/Segment_D.laz"
 
 # Read point cloud
 las = laspy.read(cloud_path)
 
 # Raster
-rt = Raster(las, pixel_size=0.1, min_dimensions=['z'], max_dimensions=['z'], min_suffix='_minimum', max_suffix='_maxx',numba=True)
+rt = Raster(las, pixel_size=0.1, min_dimensions=['intensity'], max_dimensions=['intensity'], min_suffix='_minimum', max_suffix='_maxx',numba=True)
 
 # Voxels
 vx = Voxels(las, voxel_size=0.2, mean=['xyz'], var=['z'], var_suffix='_var',pca_local=True, numba=True)

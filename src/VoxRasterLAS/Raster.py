@@ -126,7 +126,7 @@ class Raster(object):
                 d_property = np.asarray(getattr(point_cloud, property_name))
                 dtype = d_property.dtype
                 if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype('float64')))
+                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
 
                 d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
                 d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
@@ -153,7 +153,7 @@ class Raster(object):
                 dmax = d_property.max()
                 if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
 
-                d_property = cuda.to_device(np.ascontiguousarray(d_property))
+                d_property = cuda.to_device(np.ascontiguousarray(d_property.astpye(np.int32)))
 
                 d_aux =cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, dmax+1), dtype=np.int32)))
                 d_aux_2 = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels), dtype=np.int32)))
@@ -180,9 +180,9 @@ class Raster(object):
                 d_property = np.asarray(getattr(point_cloud, property_name))
                 dtype = d_property.dtype
                 if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-                d_property = cuda.to_device(np.ascontiguousarray(d_property))
+                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
                 
-                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=dtype)))
+                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
 
                 # max
                 utils_cuda.max[blocks, threads_per_block](d_property, d_order, d_out)
@@ -202,10 +202,10 @@ class Raster(object):
                 d_property = np.asarray(getattr(point_cloud, property_name))
                 dtype = d_property.dtype
                 if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-                
-                d_out = cuda.to_device(np.ascontiguousarray(d_property.max()*np.ones(shape=(n_pixels, d_property.shape[1]), dtype=dtype)))
-                d_property = cuda.to_device(np.ascontiguousarray(d_property))
 
+                d_out = cuda.to_device(np.ascontiguousarray(d_property.max()*np.ones(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
+                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
+                
                 # max
                 utils_cuda.min[blocks, threads_per_block](d_property, d_order, d_out)
                 cuda.synchronize
@@ -224,7 +224,7 @@ class Raster(object):
                 d_property = np.asarray(getattr(point_cloud, property_name))
                 dtype = d_property.dtype
                 if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype('float64')))
+                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
 
                 d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
                 d_mean = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
