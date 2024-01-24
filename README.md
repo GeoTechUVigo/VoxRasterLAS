@@ -28,5 +28,5 @@ LAS decompressor might be installed via pip compatible with laspy package.
 
 To install VoxRasterLAS (available in test.pypi):
 ```
-python3 -m pip install --extra-index-url https://test.pypi.org/simple/ VoxRasterLAS==0.0.28
+python3 -m pip install --extra-index-url https://test.pypi.org/simple/ VoxRasterLAS==0.0.29
 ```

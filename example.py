@@ -32,7 +32,7 @@ las = laspy.read(cloud_path)
 rt = Raster(las, pixel_size=0.1, min_dimensions=['z'], max_dimensions=['z'], min_suffix='_minimum', max_suffix='_maxx',numba=True)
 
 # Voxels
-vx = Voxels(las, voxel_size=0.2, mean=['xyz'], centroid=['a', 'b', 'c'], var=['z'], mode=['classification'], var_suffix='_var', grid=True, neighbours=False, pca_local=False, numba=True)
+vx = Voxels(las, voxel_size=0.2, mean=['xyz'], var=['z'], var_suffix='_var',pca_local=True, numba=True)
 
 # voxelised las
 vx.las

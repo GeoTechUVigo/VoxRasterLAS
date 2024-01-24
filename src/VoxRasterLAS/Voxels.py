@@ -283,10 +283,15 @@ class Voxels(object):
                 property_shape = d_property.shape
 
                 # Load mean if it is computed
-                if property_name in mean or ((property_name=='x' or property_name=='y' or property_name=='z') and 'xyz' in mean):
-                    d_mean = np.asarray(getattr(self.las, property_name + mean_suffix))
-                else:
-                    d_mean = None
+                d_mean = None
+                if len(mean) !=0:
+                    if property_name in mean:
+                        d_mean = np.asarray(getattr(self.las, property_name+ mean_suffix))
+                    elif ((property_name=='x' or property_name=='y' or property_name=='z') and 'xyz' in mean):
+                        d_mean = np.asarray(getattr(self.las, 'xyz' + mean_suffix))
+                        if property_name=='x': d_mean = d_mean[:,0]
+                        elif property_name=='y': d_mean = d_mean[:,1]
+                        elif property_name=='z': d_mean = d_mean[:,2]
 
                 d_out  = self.__var_cuda(d_property, d_mean, n_voxels, d_order, d_npoints, blocks, threads_per_block)
 
@@ -370,10 +375,17 @@ class Voxels(object):
                         var_result[:,i] = getattr(self.las, property_name + var_suffix)
                     except:
                         d_property = np.asarray(getattr(point_cloud, property_name))
-                        if property_name in mean or ((property_name=='x' or property_name=='y' or property_name=='z') and 'xyz' in mean):
-                            d_mean = np.asarray(getattr(self.las, property_name+ mean_suffix))
-                        else:
-                            d_mean = None
+                        d_mean = None
+                        # Load means if they are already calculated
+                        if len(mean) !=0:
+                            if property_name in mean:
+                                d_mean = np.asarray(getattr(self.las, property_name+ mean_suffix))
+                            elif ((property_name=='x' or property_name=='y' or property_name=='z') and 'xyz' in mean):
+                                d_mean = np.asarray(getattr(self.las, 'xyz' + mean_suffix))
+                                if property_name=='x': d_mean = d_mean[:,0]
+                                elif property_name=='y': d_mean = d_mean[:,1]
+                                elif property_name=='z': d_mean = d_mean[:,2]
+
                         var_result[:,i]  = self.__var_cuda(d_property, d_mean, n_voxels, d_order, d_npoints, blocks, threads_per_block).copy_to_host().reshape(-1)
 
                 # compute cov
@@ -384,15 +396,25 @@ class Voxels(object):
                     except:
                         d_property_0 = np.asarray(getattr(point_cloud, property_name[0]))
                         d_property_1 = np.asarray(getattr(point_cloud, property_name[1]))
+                        d_mean_0 = None
+                        d_mean_1 = None
+                        # Load means if they are already calculated
+                        if len(mean) !=0:
+                            if property_name[0] in mean:
+                                d_mean_0 = np.asarray(getattr(self.las, property_name[0]+ mean_suffix))
+                            elif ((property_name[0]=='x' or property_name[0]=='y' or property_name[0]=='z') and 'xyz' in mean):
+                                d_mean_0 = np.asarray(getattr(self.las, 'xyz' + mean_suffix))
+                                if property_name[0]=='x': d_mean_0 = d_mean_0[:,0]
+                                elif property_name[0]=='y': d_mean_0 = d_mean_0[:,1]
+                                elif property_name[0]=='z': d_mean_0 = d_mean_0[:,2]
 
-                        if property_name[0] in mean or ((property_name[0]=='x' or property_name[0]=='y' or property_name[0]=='z') and 'xyz' in mean):
-                            d_mean_0 = np.asarray(getattr(self.las, property_name[0]+ mean_suffix))
-                        else:
-                            d_mean_0 = None
-                        if property_name[1] in mean or ((property_name[1]=='x' or property_name[1]=='y' or property_name[1]=='z') and 'xyz' in mean):
-                            d_mean_1 = np.asarray(getattr(self.las, property_name[1] + mean_suffix))
-                        else:
-                            d_mean_1 = None
+                            if property_name[1] in mean:
+                                d_mean_1 = np.asarray(getattr(self.las, property_name[1]+ mean_suffix))
+                            elif ((property_name[1]=='x' or property_name[1]=='y' or property_name[1]=='z') and 'xyz' in mean):
+                                d_mean_1 = np.asarray(getattr(self.las, 'xyz' + mean_suffix))
+                                if property_name[1]=='x': d_mean_1 = d_mean_1[:,0]
+                                elif property_name[1]=='y': d_mean_1 = d_mean_1[:,1]
+                                elif property_name[1]=='z': d_mean_1 = d_mean_1[:,2]
 
                         cov_result[:,i]  = self.__cov_cuda(d_property_0, d_property_1, d_mean_0, d_mean_1, n_voxels, d_order, d_npoints, blocks, threads_per_block).copy_to_host().reshape(-1)
 
