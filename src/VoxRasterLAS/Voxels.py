@@ -102,12 +102,8 @@ class Voxels(object):
 
         # ==============================================================================================================
         # Get max and min values
-        min_x = np.amin(point_cloud.xyz[:, 0])
-        max_x = np.amax(point_cloud.xyz[:, 0])
-        min_y = np.amin(point_cloud.xyz[:, 1])
-        max_y = np.amax(point_cloud.xyz[:, 1])
-        min_z = np.amin(point_cloud.xyz[:, 2])
-        max_z = np.amax(point_cloud.xyz[:, 2])
+        min_x, min_y, min_z = point_cloud.header.mins
+        max_x, max_y, max_z = point_cloud.header.maxs
 
         # Calculate number of voxels. It cannot be 0.
         n_x = np.ceil((max_x - min_x) / voxel_size[0]).astype('int') if np.ceil((max_x - min_x) / voxel_size[0]) != 0 else 1
@@ -120,9 +116,9 @@ class Voxels(object):
         step_z = (max_z - min_z) / n_z if max_z - min_z != 0 and adjust_voxel_size else voxel_size[2]
 
         # Calculate coordinates of each point
-        dim_x = np.trunc((point_cloud.xyz[:, 0] - min_x) / step_x).astype('uint')
-        dim_y = np.trunc((point_cloud.xyz[:, 1] - min_y) / step_y).astype('uint')
-        dim_z = np.trunc((point_cloud.xyz[:, 2] - min_z) / step_z).astype('uint')
+        dim_x = np.trunc((point_cloud.x - min_x) / step_x).astype('uint')
+        dim_y = np.trunc((point_cloud.y - min_y) / step_y).astype('uint')
+        dim_z = np.trunc((point_cloud.z - min_z) / step_z).astype('uint')
 
         # Move coordinates out of range to the last coordinate in each dimension
         dim_x[dim_x == n_x] = n_x - 1
@@ -154,7 +150,7 @@ class Voxels(object):
         # Initialise voxel voxel_size variables
         setattr(self, 'voxel_size', np.array((step_x, step_y, step_z)))
         setattr(self, 'grid_size', np.array((n_x, n_y, n_z)))
-        setattr(self, 'min_coords', np.array((min_x, min_y, min_z)))
+        setattr(self, 'min_coords', point_cloud.header.mins)
 
         if grid:
             setattr(self, 'indexes_grid', self.compute_indexes_xyz(idx))
@@ -231,14 +227,13 @@ class Voxels(object):
         
         # ==============================================================================================================
         if centroid!=[]:
-            centroids = self.compute_centroids(indexes_global=idx)            
-            dtype = str(point_cloud.xyz.dtype)
+            centroids = self.compute_centroids(indexes_global=idx)
             if centroid == ['xyz']:
                 setattr(self.las, 'xyz', centroids)
             else:
                 for i in range(len(centroid)):
                     this_property_name = centroid[i]
-                    self.las.add_extra_dim(laspy.point.format.ExtraBytesParams(this_property_name, dtype))
+                    self.las.add_extra_dim(laspy.point.format.ExtraBytesParams(this_property_name, 'float64'))
 
                     setattr(self.las, this_property_name, centroids[:,i])
 
@@ -889,7 +884,7 @@ class Voxels(object):
 
     def __set_property(self, property_name, property_shape, d_out, dtype, suffix):
 
-        if d_out is cuda.cudadrv.devicearray.DeviceNDArray:
+        if type(d_out) is cuda.cudadrv.devicearray.DeviceNDArray:
             d_out = d_out.copy_to_host()
 
         if suffix =='':
@@ -907,6 +902,25 @@ class Voxels(object):
             self.las.add_extra_dim(laspy.point.format.ExtraBytesParams(this_property_name, dtype))
             setattr(self.las, this_property_name, d_out.reshape(-1))
 
+    @staticmethod
+    def __dtype_las_property(info_property):
+        '''
+        Method to know the laspy property data type without read it.
+
+        :param info_property: laspy_object.header.dimensions_by_name('dimension_name')
+        '''
+
+        n_bits = str(info_property.num_bits)
+
+        if str(info_property.kind) == 'DimensionKind.SignedInteger':
+            kind = 'int'
+        elif str(info_property.kind) == 'DimensionKind.UnsignedInteger':
+            kind = 'uint'
+        elif str(info_property.kind) == 'DimensionKind.FloatingPoint':
+            kind = 'float'
+
+        return kind+n_bits
+
 
     @staticmethod
     def __mean_cuda(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block):
@@ -914,8 +928,9 @@ class Voxels(object):
         # reshape and change data type to compute in GPU with numba
         if type(d_property) is not cuda.cudadrv.devicearray.DeviceNDArray:
             if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-            d_property = cuda.to_device(np.ascontiguousarray(d_property.astype('float64')))
-        
+            d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
+
+
         d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property.shape[1]), dtype=np.float64)))
         d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property.shape[1]), dtype=np.float64)))
 
@@ -927,7 +942,22 @@ class Voxels(object):
 
         return d_out
 
+    @staticmethod
+    def __mean_cuda_2(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block):
 
+        # reshape and change data type to compute in GPU with numba
+        if type(d_property) is not cuda.cudadrv.devicearray.DeviceNDArray:
+            if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
+            d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
+
+        d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property.shape[1]), dtype=np.float64)))
+
+        # Mean
+        utils_cuda.mean[blocks, threads_per_block](d_property, d_order, d_npoints, d_out)
+        cuda.synchronize
+
+        return d_out
+    
     @staticmethod
     def __var_cuda(d_property, d_mean, n_voxels, d_order, d_npoints, blocks, threads_per_block):
 

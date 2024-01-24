@@ -24,6 +24,16 @@ numba_logger.setLevel(logging.ERROR) # only show error
 
 # Numba functions to work in the GPU
 @cuda.jit
+def mean(input, index, n_points, output):
+    x, y = cuda.grid(2)
+    stride_x, stride_y = cuda.gridsize(2)
+    
+    for j in range(y, input.shape[1], stride_y):
+        for i in range(x, input.shape[0],stride_x):
+            cuda.atomic.add(output, (index[i], j), input[i, j] / n_points[index[i]])
+
+
+@cuda.jit
 def mean_sum(input, n_points, output):
     x, y = cuda.grid(2)
     stride_x, stride_y = cuda.gridsize(2)

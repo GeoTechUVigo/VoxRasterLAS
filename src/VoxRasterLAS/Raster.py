@@ -63,10 +63,8 @@ class Raster(object):
 
         # Limits of the raster
         if raster_size is None:
-            min_x = point_cloud.xyz[:, 0].min()
-            max_x = point_cloud.xyz[:, 0].max()
-            min_y = point_cloud.xyz[:, 1].min()
-            max_y = point_cloud.xyz[:, 1].max()
+            min_x, min_y, _ = point_cloud.header.mins
+            max_x, max_y, _ = point_cloud.header.maxs
 
             # Calculate number of pixels
             n_x = np.ceil((max_x - min_x) / pixel_size[0]).astype('uint')
