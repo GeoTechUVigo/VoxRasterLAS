@@ -33,7 +33,7 @@ class Raster(object):
         Raster constructor. This is a class to work with rasterised 2D point clouds in XY plane.
 
         A Raster object is generated from the laspy.lasdata.LasData object, specifying a pixel_size and which las dimensions you need to calculate and how.
-        The dimension computed with variance and max are set with the name $DIMENSION_var and $DIMENSION_max.
+        The dimensions must correspond to a column array. For example, mean_dimensions=['x', 'y', 'z'].
 
         :param point_cloud: point cloud to be vonxelised.
         :param pixel_size: size of pixel. It can numeric or 3x1 array.
@@ -120,42 +120,32 @@ class Raster(object):
             d_npoints = cuda.to_device(n_points)
 
             for property_name in mean_dimensions:
-                # Load property in device
-                d_property = np.asarray(getattr(point_cloud, property_name))
-                dtype = d_property.dtype
-                if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
 
-                d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
-                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
+                # Load property in device
+                d_property = self.__property_to_device(point_cloud, property_name)
+                dtype = self.__dtype_las_property(point_cloud.header, property_name)
+
+                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_pixels, dtype=np.float64)))
 
                 # Mean
-                utils_cuda.sum[blocks, threads_per_block](d_property, d_order, d_aux)
-                cuda.synchronize
-                utils_cuda.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_out)
+                utils_cuda.mean[blocks, threads_per_block](d_property, d_order, d_npoints, d_out)
                 cuda.synchronize
         
                 # Reshape
-                out = np.zeros((n_y*n_x, d_property.shape[1]), dtype=dtype)
-                out[idx, :] =  d_out.copy_to_host()
-                out = out.reshape((n_y, n_x, -1)).astype(dtype)
-                out = np.transpose(out, axes=[1,0,2])
+                out = self.__d_out_to_matrix(n_y, n_x, idx, dtype, d_out)
 
                 # Set
                 setattr(self, property_name + mean_suffix, out)
 
             for property_name in mode_dimensions:
+
                 # Load property in device
-                d_property = np.asarray(getattr(point_cloud, property_name))
-                dtype = d_property.dtype
-                dmax = d_property.max()
-                if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
+                d_property = self.__property_to_device(point_cloud, property_name, dtype=np.int32)
+                dtype = self.__dtype_las_property(point_cloud.header, property_name)
 
-                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.int32)))
-
-                d_aux =cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, dmax+1), dtype=np.int32)))
+                d_aux =cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, getattr(point_cloud, property_name).max()+1), dtype=np.int32)))
                 d_aux_2 = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels), dtype=np.int32)))
-                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.int32)))
+                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_pixels, dtype=np.int32)))
 
                 # mode
                 utils_cuda.sum_class[blocks, threads_per_block](d_property, d_order, d_aux)
@@ -164,10 +154,7 @@ class Raster(object):
                 cuda.synchronize
 
                 # Reshape
-                out = np.zeros((n_y*n_x, d_out.shape[1]), dtype=dtype)
-                out[idx, :] =  d_out.copy_to_host()
-                out = out.reshape((n_y, n_x, -1))
-                out = np.transpose(out, axes=[1,0,2])
+                out = self.__d_out_to_matrix(n_y, n_x, idx, dtype, d_out)
 
                 # Set property
                 setattr(self, property_name + mode_suffix, out)
@@ -175,86 +162,65 @@ class Raster(object):
 
             for property_name in max_dimensions:
                 # Load property in device
-                d_property = np.asarray(getattr(point_cloud, property_name))
-                dtype = d_property.dtype
-                if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
+                d_property = self.__property_to_device(point_cloud, property_name, dtype=np.int32)
+                dtype = self.__dtype_las_property(point_cloud.header, property_name)
                 
-                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
+                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_pixels, dtype=np.float64)))
 
                 # max
                 utils_cuda.max[blocks, threads_per_block](d_property, d_order, d_out)
                 cuda.synchronize
         
                 # Reshape
-                out = np.zeros((n_y*n_x, d_property.shape[1]), dtype=dtype)
-                out[idx, :] =  d_out.copy_to_host()
-                out = out.reshape((n_y, n_x, -1)).astype(dtype)
-                out = np.transpose(out, axes=[1,0,2])
+                out = self.__d_out_to_matrix(n_y, n_x, idx, dtype, d_out)
 
                 # Set
                 setattr(self, property_name + max_suffix, out)
 
             for property_name in min_dimensions:
                 # Load property in device
-                d_property = np.asarray(getattr(point_cloud, property_name))
-                dtype = d_property.dtype
-                if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
+                d_property = self.__property_to_device(point_cloud, property_name, dtype=np.int32)
+                dtype = self.__dtype_las_property(point_cloud.header, property_name)
 
-                d_out = cuda.to_device(np.ascontiguousarray(d_property.max()*np.ones(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
-                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
+                d_out = cuda.to_device(np.ascontiguousarray(getattr(point_cloud, property_name).max()*np.ones(shape=n_pixels, dtype=np.float64)))
                 
                 # max
                 utils_cuda.min[blocks, threads_per_block](d_property, d_order, d_out)
                 cuda.synchronize
         
                 # Reshape
-                out = np.zeros((n_y*n_x, d_property.shape[1]), dtype=dtype)
-                out[idx, :] =  d_out.copy_to_host()
-                out = out.reshape((n_y, n_x, -1)).astype(dtype)
-                out = np.transpose(out, axes=[1,0,2])
+                out = self.__d_out_to_matrix(n_y, n_x, idx, dtype, d_out)
 
                 # Set
                 setattr(self, property_name + min_suffix, out)
 
             for property_name in var_dimensions:
                 # Load property in device
-                d_property = np.asarray(getattr(point_cloud, property_name))
-                dtype = d_property.dtype
-                if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
+                d_property = self.__property_to_device(point_cloud, property_name, dtype=np.int32)
+                dtype = self.__dtype_las_property(point_cloud.header, property_name)
 
-                d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
-                d_mean = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
-                d_aux_2 = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
-                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_pixels, d_property.shape[1]), dtype=np.float64)))
+                d_mean = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_pixels, dtype=np.float64)))
+                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_pixels, dtype=np.float64)))
 
                 # Mean
-                utils_cuda.sum[blocks, threads_per_block](d_property, d_order, d_aux)
-                cuda.synchronize
-                utils_cuda.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_mean)
+                utils_cuda.mean[blocks, threads_per_block](d_property, d_order, d_npoints, d_mean)
                 cuda.synchronize
 
                 # Var
-                utils_cuda.squared_dist_sum[blocks, threads_per_block](d_property, d_order, d_mean, d_aux_2)
-                cuda.synchronize
-                utils_cuda.mean_sum[blocks, threads_per_block](d_aux_2, d_npoints, d_out)
+                utils_cuda.var[blocks, threads_per_block](d_property, d_order, d_mean, d_npoints, d_out)
                 cuda.synchronize
         
                 # Reshape
-                out = np.zeros((n_y*n_x, d_property.shape[1]), dtype=dtype)
-                out[idx, :] =  d_out.copy_to_host()
-                out = out.reshape((n_y, n_x, -1)).astype(dtype)
-                out = np.transpose(out, axes=[1,0,2])
+                out = self.__d_out_to_matrix(n_y, n_x, idx, dtype, d_out)
 
                 # Set
                 setattr(self, property_name + var_suffix, out)
 
             if occupation:
-                out = np.zeros((n_y*n_x, 1), dtype='bool')
-                out[idx, :] =  True
-                out = out.reshape((n_y, n_x, -1))
-                out = np.transpose(out, axes=[1,0,2])
+                out = np.zeros(n_y*n_x, dtype='bool')
+                out[idx] =  True
+                out = out.reshape(n_y, n_x)
+                out = np.transpose(out, axes=[1,0])
                 setattr(self, 'occupation', out)
 
 
@@ -547,6 +513,49 @@ class Raster(object):
                 continuous_raster[x, y] = value
 
         return continuous_raster
+
+
+    @staticmethod
+    def __property_to_device(point_cloud, property_name, dtype=np.float64):
+            d_property = cuda.to_device(np.ascontiguousarray(np.asarray(getattr(point_cloud, property_name)).astype(dtype)))
+            return d_property    
+
+
+    @staticmethod
+    def __dtype_las_property(header, property_name):
+        '''
+        Method to know the laspy property data type without read it.
+        It uses header.point_format.dimension_by_name(property_name).
+
+        :param info_property: laspy_object.header
+        :param property_name: name of the property.
+        '''
+        if property_name=='x' or property_name=='y' or property_name=='z':
+            return 'float64'
+        
+        n_bits = str(header.point_format.dimension_by_name(property_name).num_bits)
+
+        if str(header.point_format.dimension_by_name(property_name).kind) == 'DimensionKind.SignedInteger':
+            kind = 'int'
+        elif str(header.point_format.dimension_by_name(property_name).kind) == 'DimensionKind.UnsignedInteger':
+            kind = 'uint'
+        elif str(header.point_format.dimension_by_name(property_name).kind) == 'DimensionKind.BitField':
+            kind = 'uint'
+            n_bits=str(8)
+        elif str(header.point_format.dimension_by_name(property_name).kind) == 'DimensionKind.FloatingPoint':
+            kind = 'float'
+
+        return kind+n_bits
+    
+
+    @staticmethod
+    def __d_out_to_matrix(n_y, n_x, idx, dtype, d_out):
+            
+        out = np.zeros(n_y*n_x, dtype=dtype)
+        out[idx] =  d_out.copy_to_host()
+        out = out.reshape(n_y, n_x).astype(dtype)
+        out = np.transpose(out, axes=[1,0])
+        return out
     
 
     @staticmethod

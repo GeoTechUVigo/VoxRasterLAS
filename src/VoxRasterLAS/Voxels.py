@@ -16,7 +16,7 @@ with the program in COPYING. If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
 from ismember import ismember
-from .utils import utils_cuda_2
+from .utils import utils_cuda
 from .utils import utils
 from numba import cuda
 import laspy
@@ -258,7 +258,7 @@ class Voxels(object):
                 d_property = self.__property_to_device(point_cloud, property_name)
                 dtype = self.__dtype_las_property(point_cloud.header, property_name)
 
-                d_out  = self.__mean_cuda_2(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block)
+                d_out  = self.__mean_cuda(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block)
                 
                 # Set property
                 self.__set_property(property_name, d_out, dtype, mean_suffix)
@@ -312,17 +312,17 @@ class Voxels(object):
             for property_name in mode:
                 
                 # Load property in device
-                d_property = self.__property_to_device(point_cloud, property_name)
+                d_property = self.__property_to_device(point_cloud, property_name, dtype=np.int32)
                 dtype = self.__dtype_las_property(point_cloud.header, property_name)
                        
                 d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, getattr(point_cloud, property_name).max()+1), dtype=np.int32)))
-                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
-                d_nclass = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels), dtype=np.int32)))
+                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.int32)))
+                d_nclass = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.int32)))
 
-                # Mean
-                utils_cuda_2.sum_class[blocks, threads_per_block](d_property, d_order, d_aux)
+                # Mode
+                utils_cuda.sum_class[blocks, threads_per_block](d_property, d_order, d_aux)
                 cuda.synchronize
-                utils_cuda_2.mode_column[blocks, threads_per_block](d_aux, d_nclass, d_out)
+                utils_cuda.mode_column[blocks, threads_per_block](d_aux, d_nclass, d_out)
                 cuda.synchronize
 
                 # Set property   
@@ -916,25 +916,10 @@ class Voxels(object):
     @staticmethod
     def __mean_cuda(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block):
 
-        d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
         d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
 
         # Mean
-        utils_cuda_2.sum[blocks, threads_per_block](d_property, d_order, d_aux)
-        cuda.synchronize
-        utils_cuda_2.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_out)
-        cuda.synchronize
-
-        return d_out
-
-
-    @staticmethod
-    def __mean_cuda_2(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block):
-
-        d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
-
-        # Mean
-        utils_cuda_2.mean[blocks, threads_per_block](d_property, d_order, d_npoints, d_out)
+        utils_cuda.mean[blocks, threads_per_block](d_property, d_order, d_npoints, d_out)
         cuda.synchronize
 
         return d_out
@@ -947,13 +932,10 @@ class Voxels(object):
         if d_mean is None:
             d_mean = Voxels.__mean_cuda(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block)
         
-        d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
         d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
 
         # Var
-        utils_cuda_2.squared_dist_sum[blocks, threads_per_block](d_property, d_order, d_mean, d_aux)
-        cuda.synchronize
-        utils_cuda_2.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_out)
+        utils_cuda.var[blocks, threads_per_block](d_property, d_order, d_mean, d_npoints, d_out)
         cuda.synchronize
 
         return d_out
@@ -970,13 +952,10 @@ class Voxels(object):
         if d_mean_1 is None:
             d_mean_1  = Voxels.__mean_cuda(d_property_1, n_voxels, d_order, d_npoints, blocks, threads_per_block)
 
-        d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
         d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
 
         # Var
-        utils_cuda_2.covar_dist_sum[blocks, threads_per_block](d_property_0, d_property_1, d_order, d_mean_0, d_mean_1, d_aux)
-        cuda.synchronize
-        utils_cuda_2.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_out)
+        utils_cuda.cov[blocks, threads_per_block](d_property_0, d_property_1, d_order, d_mean_0, d_mean_1, d_npoints, d_out)
         cuda.synchronize
 
         return d_out

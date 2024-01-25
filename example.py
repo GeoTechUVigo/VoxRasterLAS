@@ -16,13 +16,12 @@ with the program in COPYING. If not, see <https://www.gnu.org/licenses/>.
 
 import laspy
 from src.VoxRasterLAS.Voxels import Voxels
-from src.VoxRasterLAS.Voxels_copy import Voxels as Voxels_2
-
 from src.VoxRasterLAS.Raster import Raster
 #from VoxRasterLAS import Raster
 #from VoxRasterLAS import Voxels
 import numpy as np
 import time
+import matplotlib.pyplot as plt
 
 cloud_path = "data/BaileyTruss_000.las"
 #cloud_path = "/home/lamas/Documentos/github/voxraster_prueba/data/SUD/Segment_D_E_F.laz"
@@ -30,35 +29,10 @@ cloud_path = "data/BaileyTruss_000.las"
 # Read point cloud
 las = laspy.read(cloud_path)
 
-voxel_size = 0.4
-vx_0 = Voxels(las, voxel_size=voxel_size, mean=['xyz'], pca_local=False, numba=True)
+rt = Raster(las, pixel_size=0.05, occupation=True, mean_dimensions=['x'], var_dimensions=['z'], mode_dimensions=['classification'], max_dimensions=['z'], min_dimensions=['z'])
 
-
-a = time.time()
-vx_0 = Voxels(las, voxel_size=voxel_size, mean=['xyz'], mode=['classification'], var=['z'], cov=[['z', 'y'],['z', 'z']], pca_local=True, neighbours=True, numba=True)
-a = time.time()-a
-
-b = time.time()
-vx_1 = Voxels_2(las, voxel_size=voxel_size, mean=['xyz'], mode=['classification'], var=['z'], cov=[['z', 'y'], ['z', 'z']], pca_local=True, neighbours=True, numba=True)
-b = time.time()-b
-
-
-a = time.time()
-vx = Voxels(las, voxel_size=0.1, mean=['xyz'])
-a = time.time()-a
-vx = Voxels(las, voxel_size=0.1, mean=['x','y','z'])
-b = time.time()
-vx = Voxels(las, voxel_size=0.1, mean=['x','y','z'])
-b = time.time()-b
-
-
-a = time.time()
-xyz = las.xyz
-a = time.time()-a
-
-b = time.time()
-xyz = np.concatenate((np.array(las.x).reshape(-1,1),np.array(las.y).reshape(-1,1), np.array(las.z).reshape(-1,1)), axis=1)
-b = time.time()-b
+plt.plot(rt.occupation)
+plt.imsave('a.png', rt.occupation)
 
 
 # Raster
