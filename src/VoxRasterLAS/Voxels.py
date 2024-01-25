@@ -16,7 +16,7 @@ with the program in COPYING. If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
 from ismember import ismember
-from .utils import utils_cuda
+from .utils import utils_cuda_2
 from .utils import utils
 from numba import cuda
 import laspy
@@ -73,26 +73,22 @@ class Voxels(object):
             return
         
         if  isinstance(voxel_size,numbers.Number): voxel_size = [voxel_size, voxel_size, voxel_size]
-
-        las_dimension_names = list(point_cloud.point_format.dimension_names)
-        las_dimension_names.remove('X'), las_dimension_names.remove('Y'), las_dimension_names.remove('Z')
-        las_dimension_names.append('xyz')
-        las_dimension_names = np.asarray(las_dimension_names)
         
+        # Check lists of properties
+        mean  = self.check_list(mean)
+        mode = self.check_list(mode)
+        var = self.check_list(var)
+        cov = self.check_list(cov)
         # ==============================================================================================================
-        # Set up list of dimenaions
-        mean = np.asarray(mean)
         # Add all the dimensions if calc_all
         if calc_all:
             las_dimension_names = list(point_cloud.point_format.dimension_names)
             # Compute xyz together to speed up the process. Check possible problems with the name of mean properties.
             las_dimension_names.remove('X'), las_dimension_names.remove('Y'), las_dimension_names.remove('Z')
-            if mean_suffix == '':
-                las_dimension_names.append('xyz')
-            else:
-                las_dimension_names.append('x')
-                las_dimension_names.append('y')
-                las_dimension_names.append('z')
+ 
+            las_dimension_names.append('x')
+            las_dimension_names.append('y')
+            las_dimension_names.append('z')
 
             mean = np.asarray(las_dimension_names)
             
@@ -224,6 +220,8 @@ class Voxels(object):
 
             # Set property
             setattr(self, 'neighbours', vx_neighbours)
+
+            del vx_neighbours, mask, iloc, iloc_idx, neighbor_offset
         
         # ==============================================================================================================
         if centroid!=[]:
@@ -257,98 +255,78 @@ class Voxels(object):
             for property_name in mean:
                 
                 # Load property in device
-                d_property = np.asarray(getattr(point_cloud, property_name))
-                if np.all(d_property==0):continue # if all are 0 continue
-                dtype = str(d_property.dtype)
-                property_shape = d_property.shape
+                d_property = self.__property_to_device(point_cloud, property_name)
+                dtype = self.__dtype_las_property(point_cloud.header, property_name)
 
-                d_out  = self.__mean_cuda(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block)
+                d_out  = self.__mean_cuda_2(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block)
                 
                 # Set property
-                self.__set_property(property_name, property_shape, d_out, dtype, mean_suffix)
-
+                self.__set_property(property_name, d_out, dtype, mean_suffix)
 
             # Variance properties
             for property_name in var:
 
                 # Load property in device
-                d_property = np.asarray(getattr(point_cloud, property_name))
-                if np.all(d_property==0):continue # if all are 0 continue
-                dtype = str(d_property.dtype)
-                property_shape = d_property.shape
+                d_property = self.__property_to_device(point_cloud, property_name)
+                dtype = self.__dtype_las_property(point_cloud.header, property_name)
 
                 # Load mean if it is computed
                 d_mean = None
                 if len(mean) !=0:
                     if property_name in mean:
-                        d_mean = np.asarray(getattr(self.las, property_name+ mean_suffix))
-                    elif ((property_name=='x' or property_name=='y' or property_name=='z') and 'xyz' in mean):
-                        d_mean = np.asarray(getattr(self.las, 'xyz' + mean_suffix))
-                        if property_name=='x': d_mean = d_mean[:,0]
-                        elif property_name=='y': d_mean = d_mean[:,1]
-                        elif property_name=='z': d_mean = d_mean[:,2]
+                        d_mean = self.__property_to_device(self.las, property_name+ mean_suffix)
 
                 d_out  = self.__var_cuda(d_property, d_mean, n_voxels, d_order, d_npoints, blocks, threads_per_block)
 
                 # Set property
-                self.__set_property(property_name, property_shape, d_out, dtype, var_suffix)
+                self.__set_property(property_name, d_out, dtype, var_suffix)
 
 
             # cov properties
             for property_name in cov:
 
                 # Load property in device
-                d_property_0 = np.asarray(getattr(point_cloud, property_name[0]))
-                dtype = str(d_property_0.dtype)
-                property_shape = d_property_0.shape                
+                d_property_0 = self.__property_to_device(point_cloud, property_name[0])
+                dtype = self.__dtype_las_property(point_cloud.header, property_name[0])             
 
                 # Load property in device
-                d_property_1 = np.asarray(getattr(point_cloud, property_name[0]))
-                dtype = str(d_property_1.dtype)
-                property_shape = d_property_1.shape  
+                d_property_1 = self.__property_to_device(point_cloud, property_name[1])
+                dtype = self.__dtype_las_property(point_cloud.header, property_name[1])  
 
                 # Load mean if it is computed
-                if property_name[0] in mean or ((property_name[0]=='x' or property_name[0]=='y' or property_name[0]=='z') and 'xyz' in mean):
-                    d_mean_0 = np.asarray(getattr(self.las, property_name[0] + mean_suffix))
-                else:
-                    d_mean_0 = None
-                # Load mean if it is computed
-                if property_name[1] in mean or ((property_name[1]=='x' or property_name[1]=='y' or property_name[1]=='z') and 'xyz' in mean):
-                    d_mean_1 = np.asarray(getattr(self.las, property_name[1] + mean_suffix))
-                else:
-                    d_mean_1 = None
+                d_mean_0 = None
+                d_mean_1 = None
+                if len(mean) !=0:
+                    if property_name[0] in mean:
+                        d_mean_0 = self.__property_to_device(self.las, property_name[0]+ mean_suffix)
+                    if property_name[1] in mean:
+                        d_mean_1 = self.__property_to_device(self.las, property_name[1]+ mean_suffix)
 
                 d_out = self.__cov_cuda(d_property_0, d_property_1, d_mean_0, d_mean_1, n_voxels, d_order, d_npoints, blocks, threads_per_block)
 
                 # Set property
                 property_name = property_name[0] + '_' + property_name[1]
-                self.__set_property(property_name, property_shape, d_out, dtype, cov_suffix)
+                self.__set_property(property_name, d_out, dtype, cov_suffix)
 
             # mode properties
             for property_name in mode:
                 
                 # Load property in device
-                d_property = np.asarray(getattr(point_cloud, property_name))
-                if np.all(d_property==0):continue # if all are 0 continue
-                dtype = str(d_property.dtype)
-                # reshape and change data type to compute in GPU with numba
-                property_shape = d_property.shape
-                if len(property_shape)==1: d_property = d_property.reshape(-1,1)
-            
-                d_property = cuda.to_device(np.ascontiguousarray(d_property.astype('float64')))
-                
+                d_property = self.__property_to_device(point_cloud, property_name)
+                dtype = self.__dtype_las_property(point_cloud.header, property_name)
+                       
                 d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, getattr(point_cloud, property_name).max()+1), dtype=np.int32)))
-                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property.shape[1]), dtype=np.float64)))
+                d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
                 d_nclass = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels), dtype=np.int32)))
 
                 # Mean
-                utils_cuda.sum_class[blocks, threads_per_block](d_property, d_order, d_aux)
+                utils_cuda_2.sum_class[blocks, threads_per_block](d_property, d_order, d_aux)
                 cuda.synchronize
-                utils_cuda.mode_column[blocks, threads_per_block](d_aux, d_nclass, d_out)
+                utils_cuda_2.mode_column[blocks, threads_per_block](d_aux, d_nclass, d_out)
                 cuda.synchronize
 
                 # Set property   
-                self.__set_property(property_name, property_shape, d_out, dtype, mode_suffix)
+                self.__set_property(property_name, d_out, dtype, mode_suffix)
 
             # ==============================================================================================================        
             # Set parent_idx property
@@ -357,7 +335,6 @@ class Voxels(object):
             # ==============================================================================================================  
             if pca_local:
 
-                matrix_cov = np.zeros((n_voxels,3,3))
                 var_result = np.zeros((n_voxels,3)) # x_x, y_y,z_z
                 cov_result = np.zeros((n_voxels,3)) #x_y, x_z, y_z
                 var_names = ['x', 'y', 'z']
@@ -369,61 +346,53 @@ class Voxels(object):
                     try:
                         var_result[:,i] = getattr(self.las, property_name + var_suffix)
                     except:
-                        d_property = np.asarray(getattr(point_cloud, property_name))
+                        d_property = self.__property_to_device(point_cloud, property_name)
                         d_mean = None
                         # Load means if they are already calculated
                         if len(mean) !=0:
                             if property_name in mean:
-                                d_mean = np.asarray(getattr(self.las, property_name+ mean_suffix))
-                            elif ((property_name=='x' or property_name=='y' or property_name=='z') and 'xyz' in mean):
-                                d_mean = np.asarray(getattr(self.las, 'xyz' + mean_suffix))
-                                if property_name=='x': d_mean = d_mean[:,0]
-                                elif property_name=='y': d_mean = d_mean[:,1]
-                                elif property_name=='z': d_mean = d_mean[:,2]
+                                d_mean = self.__property_to_device(self.las, property_name+ mean_suffix)
 
                         var_result[:,i]  = self.__var_cuda(d_property, d_mean, n_voxels, d_order, d_npoints, blocks, threads_per_block).copy_to_host().reshape(-1)
 
                 # compute cov
                 for i in range(len(cov_names)):
                     property_name = cov_names[i]
-                    try:
-                        cov_result[:,i] = getattr(self.las, property_name[0] + '_' + property_name[1] + cov_suffix)
-                    except:
-                        d_property_0 = np.asarray(getattr(point_cloud, property_name[0]))
-                        d_property_1 = np.asarray(getattr(point_cloud, property_name[1]))
-                        d_mean_0 = None
-                        d_mean_1 = None
-                        # Load means if they are already calculated
-                        if len(mean) !=0:
-                            if property_name[0] in mean:
-                                d_mean_0 = np.asarray(getattr(self.las, property_name[0]+ mean_suffix))
-                            elif ((property_name[0]=='x' or property_name[0]=='y' or property_name[0]=='z') and 'xyz' in mean):
-                                d_mean_0 = np.asarray(getattr(self.las, 'xyz' + mean_suffix))
-                                if property_name[0]=='x': d_mean_0 = d_mean_0[:,0]
-                                elif property_name[0]=='y': d_mean_0 = d_mean_0[:,1]
-                                elif property_name[0]=='z': d_mean_0 = d_mean_0[:,2]
+                    if len(cov) !=0:
+                        if property_name in cov:
+                            cov_result[:,i] = getattr(self.las, property_name[0] + '_' + property_name[1] + cov_suffix)
+                            continue
+                        elif property_name.reverse() in cov:
+                            cov_result[:,i] = getattr(self.las, property_name[1] + '_' + property_name[0] + cov_suffix)
+                            continue
+                    
+                    d_property_0 = self.__property_to_device(point_cloud, property_name[0])
+                    d_property_1 = self.__property_to_device(point_cloud, property_name[1])
+                    d_mean_0 = None
+                    d_mean_1 = None
+                    # Load means if they are already calculated
+                    if len(mean) !=0:
+                        if property_name[0] in mean:
+                            d_mean_0 = self.__property_to_device(self.las, property_name[0] + mean_suffix)
+                        if property_name[1] in mean:
+                            d_mean_1 = self.__property_to_device(self.las, property_name[1] + mean_suffix)
 
-                            if property_name[1] in mean:
-                                d_mean_1 = np.asarray(getattr(self.las, property_name[1]+ mean_suffix))
-                            elif ((property_name[1]=='x' or property_name[1]=='y' or property_name[1]=='z') and 'xyz' in mean):
-                                d_mean_1 = np.asarray(getattr(self.las, 'xyz' + mean_suffix))
-                                if property_name[1]=='x': d_mean_1 = d_mean_1[:,0]
-                                elif property_name[1]=='y': d_mean_1 = d_mean_1[:,1]
-                                elif property_name[1]=='z': d_mean_1 = d_mean_1[:,2]
+                    cov_result[:,i]  = self.__cov_cuda(d_property_0, d_property_1, d_mean_0, d_mean_1, n_voxels, d_order, d_npoints, blocks, threads_per_block).copy_to_host().reshape(-1)
 
-                        cov_result[:,i]  = self.__cov_cuda(d_property_0, d_property_1, d_mean_0, d_mean_1, n_voxels, d_order, d_npoints, blocks, threads_per_block).copy_to_host().reshape(-1)
+                eigenvectors = np.zeros((n_voxels,3,3))
+                eigenvectors[:,0,0] = var_result[:,0] # x_x
+                eigenvectors[:,0,1] = cov_result[:,0] # x_y
+                eigenvectors[:,0,2] = cov_result[:,1] # x_z
+                eigenvectors[:,1,0] = cov_result[:,0] # x_y
+                eigenvectors[:,1,1] = var_result[:,1] # y_y
+                eigenvectors[:,1,2] = cov_result[:,2] # y_z
+                eigenvectors[:,2,0] = cov_result[:,1] # x_z
+                eigenvectors[:,2,1] = cov_result[:,2] # y_z
+                eigenvectors[:,2,2] = var_result[:,2] # z_z
 
-                matrix_cov[:,0,0] = var_result[:,0] # x_x
-                matrix_cov[:,0,1] = cov_result[:,0] # x_y
-                matrix_cov[:,0,2] = cov_result[:,1] # x_z
-                matrix_cov[:,1,0] = cov_result[:,0] # x_y
-                matrix_cov[:,1,1] = var_result[:,1] # y_y
-                matrix_cov[:,1,2] = cov_result[:,2] # y_z
-                matrix_cov[:,2,0] = cov_result[:,1] # x_z
-                matrix_cov[:,2,1] = cov_result[:,2] # y_z
-                matrix_cov[:,2,2] = var_result[:,2] # z_z
+                del var_result, cov_result
 
-                eigenvalues, eigenvectors = np.linalg.eig(matrix_cov)
+                eigenvalues, eigenvectors = np.linalg.eig(eigenvectors)
                 eigenvectors = np.real(eigenvectors) # It must be always real, but can be some erros if all covariances are close to 0
                 # Scale the eigenvalues to sum up 1
                 if scale_eigenvalues:
@@ -451,6 +420,7 @@ class Voxels(object):
             # Properties calculated using mean()
             if len(mean) != 0:
                 mean_properties = True
+                if not mean is np.ndarray: mean = np.asarray(mean)
                 data_mean, vx_data_mean, data_mean_size, mean, reshape_mean, dtype_mean = self.__prepare_properties_nonnumba(mean, point_cloud, n_voxels, shift_index)
             if len(mean) == 0:
                 mean_properties = False
@@ -882,104 +852,108 @@ class Voxels(object):
         return centroids
 
 
-    def __set_property(self, property_name, property_shape, d_out, dtype, suffix):
+    def __set_property(self, property_name, d_out, dtype, suffix):
 
         if type(d_out) is cuda.cudadrv.devicearray.DeviceNDArray:
             d_out = d_out.copy_to_host()
 
         if suffix =='':
-            if len(property_shape)==1:
-                setattr(self.las, property_name, d_out.reshape(-1))
-            else:
                 setattr(self.las, property_name, d_out)
         else:
             this_property_name = property_name + suffix
+            try:
+                self.las.add_extra_dim(laspy.point.format.ExtraBytesParams(this_property_name, dtype))
+                setattr(self.las, this_property_name, d_out)
+            except:
+                raise ValueError("LAS format does not allow to add extra dimensions with several columns such as {0}".format(this_property_name))
 
-            if len(property_shape)!=1:
-                if property_shape[1] > 1:
-                    raise ValueError("LAS format does not allow to add extra dimensions with several columns such as {0}".format(this_property_name))
-            
-            self.las.add_extra_dim(laspy.point.format.ExtraBytesParams(this_property_name, dtype))
-            setattr(self.las, this_property_name, d_out.reshape(-1))
 
     @staticmethod
-    def __dtype_las_property(info_property):
+    def __dtype_las_property(header, property_name):
         '''
         Method to know the laspy property data type without read it.
+        It uses header.point_format.dimension_by_name(property_name).
 
-        :param info_property: laspy_object.header.dimensions_by_name('dimension_name')
+        :param info_property: laspy_object.header
+        :param property_name: name of the property.
         '''
+        if property_name=='x' or property_name=='y' or property_name=='z':
+            return 'float64'
+        
+        n_bits = str(header.point_format.dimension_by_name(property_name).num_bits)
 
-        n_bits = str(info_property.num_bits)
-
-        if str(info_property.kind) == 'DimensionKind.SignedInteger':
+        if str(header.point_format.dimension_by_name(property_name).kind) == 'DimensionKind.SignedInteger':
             kind = 'int'
-        elif str(info_property.kind) == 'DimensionKind.UnsignedInteger':
+        elif str(header.point_format.dimension_by_name(property_name).kind) == 'DimensionKind.UnsignedInteger':
             kind = 'uint'
-        elif str(info_property.kind) == 'DimensionKind.FloatingPoint':
+        elif str(header.point_format.dimension_by_name(property_name).kind) == 'DimensionKind.BitField':
+            kind = 'uint'
+            n_bits=str(8)
+        elif str(header.point_format.dimension_by_name(property_name).kind) == 'DimensionKind.FloatingPoint':
             kind = 'float'
 
         return kind+n_bits
 
 
     @staticmethod
+    def __property_to_device(point_cloud, property_name, dtype=np.float64):
+            d_property = cuda.to_device(np.ascontiguousarray(np.asarray(getattr(point_cloud, property_name)).astype(dtype)))
+            return d_property
+    
+
+    @staticmethod
+    def check_list(list_properties):
+        '''
+        Faster without xyz
+        '''
+        if len(list_properties) !=0:
+            if 'xyz' in list_properties:
+                list_properties.append('x'), list_properties.append('y'), list_properties.append('z')
+                list_properties.remove('xyz')
+        return list_properties
+
+
+    @staticmethod
     def __mean_cuda(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block):
 
-        # reshape and change data type to compute in GPU with numba
-        if type(d_property) is not cuda.cudadrv.devicearray.DeviceNDArray:
-            if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-            d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
-
-
-        d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property.shape[1]), dtype=np.float64)))
-        d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property.shape[1]), dtype=np.float64)))
+        d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
+        d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
 
         # Mean
-        utils_cuda.sum[blocks, threads_per_block](d_property, d_order, d_aux)
+        utils_cuda_2.sum[blocks, threads_per_block](d_property, d_order, d_aux)
         cuda.synchronize
-        utils_cuda.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_out)
+        utils_cuda_2.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_out)
         cuda.synchronize
 
         return d_out
+
 
     @staticmethod
     def __mean_cuda_2(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block):
 
-        # reshape and change data type to compute in GPU with numba
-        if type(d_property) is not cuda.cudadrv.devicearray.DeviceNDArray:
-            if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-            d_property = cuda.to_device(np.ascontiguousarray(d_property.astype(np.float64)))
-
-        d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property.shape[1]), dtype=np.float64)))
+        d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
 
         # Mean
-        utils_cuda.mean[blocks, threads_per_block](d_property, d_order, d_npoints, d_out)
+        utils_cuda_2.mean[blocks, threads_per_block](d_property, d_order, d_npoints, d_out)
         cuda.synchronize
 
         return d_out
     
+
     @staticmethod
     def __var_cuda(d_property, d_mean, n_voxels, d_order, d_npoints, blocks, threads_per_block):
 
-        # reshape and change data type to compute in GPU with numba
-        if type(d_property) is not cuda.cudadrv.devicearray.DeviceNDArray:
-            if len(d_property.shape)==1: d_property = d_property.reshape(-1,1)
-            d_property = cuda.to_device(np.ascontiguousarray(d_property.astype('float64')))
-
         # Load or compute mean  
-        if d_mean is not None:
-            d_mean = d_mean.reshape(-1,1) if len(d_mean.shape)==1 else d_mean
-            d_mean = cuda.to_device(np.ascontiguousarray(d_mean.astype('float64')))
-        else:
+        if d_mean is None:
             d_mean = Voxels.__mean_cuda(d_property, n_voxels, d_order, d_npoints, blocks, threads_per_block)
         
-        d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property.shape[1]), dtype=np.float64)))
-        d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property.shape[1]), dtype=np.float64)))
+        d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
+        d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
 
         # Var
-        utils_cuda.squared_dist_sum[blocks, threads_per_block](d_property, d_order, d_mean, d_aux)
+        utils_cuda_2.squared_dist_sum[blocks, threads_per_block](d_property, d_order, d_mean, d_aux)
         cuda.synchronize
-        utils_cuda.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_out)
+        utils_cuda_2.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_out)
         cuda.synchronize
 
         return d_out
@@ -988,37 +962,21 @@ class Voxels(object):
     @staticmethod
     def __cov_cuda(d_property_0, d_property_1, d_mean_0, d_mean_1, n_voxels, d_order, d_npoints, blocks, threads_per_block):
 
-        # reshape and change data type to compute in GPU with numba
-        if type(d_property_0) is not cuda.cudadrv.devicearray.DeviceNDArray:
-            if len(d_property_0.shape)==1: d_property_0 = d_property_0.reshape(-1,1)
-            d_property_0 = cuda.to_device(np.ascontiguousarray(d_property_0.astype('float64')))
-
-        # reshape and change data type to compute in GPU with numba
-        if type(d_property_1) is not cuda.cudadrv.devicearray.DeviceNDArray:
-            if len(d_property_1.shape)==1: d_property_1 = d_property_1.reshape(-1,1)
-            d_property_1 = cuda.to_device(np.ascontiguousarray(d_property_1.astype('float64')))
-
         # Load or compute mean  
-        if d_mean_0 is not None:
-            d_mean_0 = d_mean_0.reshape(-1,1) if len(d_mean_0.shape)==1 else d_mean_0
-            d_mean_0 = cuda.to_device(np.ascontiguousarray(d_mean_0.astype('float64')))
-        else:
+        if d_mean_0 is None:
             d_mean_0  = Voxels.__mean_cuda(d_property_0, n_voxels, d_order, d_npoints, blocks, threads_per_block)
 
         # Load or compute mean  
-        if d_mean_1 is not None:
-            d_mean_1 = d_mean_1.reshape(-1,1) if len(d_mean_1.shape)==1 else d_mean_1
-            d_mean_1 = cuda.to_device(np.ascontiguousarray(d_mean_1.astype('float64')))
-        else:
+        if d_mean_1 is None:
             d_mean_1  = Voxels.__mean_cuda(d_property_1, n_voxels, d_order, d_npoints, blocks, threads_per_block)
 
-        d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property_0.shape[1]), dtype=np.float64)))
-        d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=(n_voxels, d_property_0.shape[1]), dtype=np.float64)))
+        d_aux = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
+        d_out = cuda.to_device(np.ascontiguousarray(np.zeros(shape=n_voxels, dtype=np.float64)))
 
         # Var
-        utils_cuda.covar_dist_sum[blocks, threads_per_block](d_property_0, d_property_1, d_order, d_mean_0, d_mean_1, d_aux)
+        utils_cuda_2.covar_dist_sum[blocks, threads_per_block](d_property_0, d_property_1, d_order, d_mean_0, d_mean_1, d_aux)
         cuda.synchronize
-        utils_cuda.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_out)
+        utils_cuda_2.mean_sum[blocks, threads_per_block](d_aux, d_npoints, d_out)
         cuda.synchronize
 
         return d_out
