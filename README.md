@@ -1,11 +1,24 @@
 # VoxRasterLAS
-Library to voxelise point clouds according to the LAS format, and rasterise them. It uses the numba library, which allows the GPU to be used with python.
+This library rasterises and voxelises 3D point clouds. It takes a laspy object as input and performs feature extraction.
 
 ## Overview
+This library rasterises and voxelises laspy objects, performing feature extraction at the raster and voxel level, respectively.
+To speed up the process, operations are performed using GPUs with the Numba library.
+
+### Voxelisation
+Takes a laspy object and return a Voxels object which contains the following properties:
+- 
+
+### Rasterisation
+Takes a laspy object and return a Raster object which contains the following properties:
+-
 
 
 ## Citation
-
+If you find our work useful in your research, please consider citing:
+```
+TODO:INTRODUCIR PUBLICACION
+```
 
 ## Licence
 VoxRasterLAS
@@ -26,7 +39,7 @@ This package can also be used with and without NUMBA package version 0.57. To us
 
 LAS decompressor might be installed via pip compatible with laspy package.
 
-To install VoxRasterLAS (available in test.pypi):
+To install VoxRasterLAS (available in pip):
 ```
-python3 -m pip install --extra-index-url https://test.pypi.org/simple/ VoxRasterLAS==0.0.31
+python3 -m pip install VoxRasterLAS==0.1.0
 ```

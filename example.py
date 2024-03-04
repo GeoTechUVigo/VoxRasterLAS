@@ -24,7 +24,6 @@ import time
 import matplotlib.pyplot as plt
 
 cloud_path = "data/BaileyTruss_000.las"
-#cloud_path = "/home/lamas/Documentos/github/voxraster_prueba/data/SUD/Segment_D_E_F.laz"
 
 # Read point cloud
 las = laspy.read(cloud_path)
@@ -36,7 +35,7 @@ plt.imsave('a.png', rt.occupation)
 
 
 # Raster
-rt = Raster(las, pixel_size=0.1, mean_dimensions=['intensity'], max_dimensions=['intensity'], min_suffix='_minimum', max_suffix='_maxx',numba=True)
+rt = Raster(las, pixel_size=0.1, mean_dimensions=['intensity'], max_dimensions=['intensity'], min_suffix='_minimum', max_suffix='_max',numba=True)
 
 # Voxels
 vx = Voxels(las, voxel_size=0.2, mean=['xyz'], var=['z'], var_suffix='_var',pca_local=True, numba=True)
@@ -65,8 +64,10 @@ print(len(vx_selected))
 las_select = las[vx.get_parent_idx(idx)]
 
 # Randomly downsampling xyz
-vx = Voxels(las, grid=[0.02,0.2,0.2], random=['xyz'])
+vx = Voxels(las, voxel_size=[0.02,0.2,0.2], random=['xyz'])
 
+
+#===============================================================================================================
 # Method
 from VoxRasterLAS.segmentation import clouds_in_range
 """
