@@ -44,7 +44,17 @@ and the method:
 ## Citation
 If you find our work useful in your research, please consider citing:
 ```
-TODO:INTRODUCIR PUBLICACION
+@inproceedings{lamas_voxrasterlas_2024,
+	address = {Vigo, Spain},
+	title = {VoxRasterLAS: A Python library for fast voxelisation and rasterisation of LAS 3D point clouds using GPUs.},
+	url = {https://3dgeoinfoeg-ice.webs.uvigo.es/proceedings},
+	abstract = {Voxelisation and rasterisation are common techniques for structuring point clouds. In addition, feature extraction at the voxel and raster level is also a widely used technique to facilitate the analysis or segmentation process of point clouds. We present an open-source Python library available in PyPi called VoxRasterLAS for voxelisation and rasterisation of point clouds, which allows feature extraction at voxel and raster level. The library utilizes laspy objects, a library that deal with LAS fi les directly. Moreover, GPUs are used to accelerate operations. The paper presents computational times, use cases, and a comparison with other libraries.},
+	author = {Lamas, Daniel and Soilán, Mario and Riveiro, Belen},
+	booktitle = {31st International Workshop on Intelligent Computing in Engineering},
+	month = jul,
+	year = {2024},
+	pages = {667--676},
+}
 ```
 
 ## Licence
